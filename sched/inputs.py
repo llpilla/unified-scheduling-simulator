@@ -1,4 +1,9 @@
-"""Input module. Contains the representation of data for scheduling."""
+"""
+Inputs module. Contains the representations of tasks and machines for scheduling.
+
+The basic inputs of scheduling include a list of tasks (with or without their loads)
+and the number of identical machines where the tasks will be scheduled.
+"""
 import csv                      # for handling csv files
 import numpy.random as nr       # for distributions
 import numpy                    # for statistics
@@ -6,7 +11,18 @@ import scipy.stats as stats     # for statistics
 
 # Class to describe tasks
 class Tasks:
-    """List of tasks to provide to a scheduler"""
+    """
+    List of tasks to provide to a scheduler
+
+    Attributes
+    ----------
+    loads : list of int or float, optional
+        List of the load of each task
+    num : int
+        Number of tasks
+    stats : Statistics object
+        Statistics computed over the tasks and their loads
+    """
     def __init__(self, num, loads=None):
         """Creates a list of tasks with or without their loads"""
         self.name = "Task"
