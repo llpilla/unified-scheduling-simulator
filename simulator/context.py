@@ -1,15 +1,25 @@
+# This code has only been tested with Python 3.
 """
-Context module. Contains the representations of tasks and resources for scheduling.
+Context module. Contains the representations of tasks and resources for
+scheduling.
 
+<<<<<<< HEAD
 Each task has a load, and a mapping.
 Each resource has a load.
 The whole context contains a list of tasks, a list of resources, and some scheduling statistics.
+=======
+Each task has an identifier, a load, and a mapping.
+Each resource has an identifier and a load.
+The whole context contains a list of tasks, a list of resources, and some
+scheduling statistics.
+>>>>>>> feature/scheduling-algorithm
 """
 
 import csv                      # for handling csv files
 from collections import OrderedDict
 
-class Task:  # pylint: disable=old-style-class,too-few-public-methods
+
+class Task:
     """
     Representation of a task for scheduling.
 
@@ -26,7 +36,8 @@ class Task:  # pylint: disable=old-style-class,too-few-public-methods
         self.load = load
         self.mapping = mapping
 
-class Resource:  # pylint: disable=old-style-class,too-few-public-methods
+
+class Resource:
     """
     Representation of a resource for scheduling.
 
@@ -40,7 +51,8 @@ class Resource:  # pylint: disable=old-style-class,too-few-public-methods
         """Creates a resource with an id and a load"""
         self.load = load
 
-class Statistics:  # pylint: disable=old-style-class,too-few-public-methods
+
+class Statistics:
     """
     Statistics of the scheduling context.
     Containts information related to tasks, resources, and migrations.
@@ -57,18 +69,22 @@ class Statistics:  # pylint: disable=old-style-class,too-few-public-methods
         Random number generator seed
     algorithm : string
         Name of scheduling algorithm
+    report : bool
+        True if scheduling information should be reported during execution
     """
 
-    def __init__(self, num_tasks=0, num_resources=0, rng_seed=0, algorithm='none'):
+    def __init__(self, num_tasks=0, num_resources=0,
+                 rng_seed=0, algorithm='none', report=False):
         """Creates scheduling statistics"""
         self.migrations = 0
         self.num_tasks = num_tasks
         self.num_resources = num_resources
         self.rng_seed = rng_seed
         self.algorithm = algorithm
+        self.report = report
 
-# Context for scheduling
-class Context:  # pylint: disable=old-style-class
+
+class Context:
     """
     Scheduling context. Contains tasks, resources, and statistics.
 
@@ -141,7 +157,8 @@ class Context:  # pylint: disable=old-style-class
 
         Notes
         -----
-        Each line of the file contains a task identifier, its load, and its mapping.
+        Each line of the file contains a task identifier, its load, and its
+        mapping.
         A header informs the number of tasks, resources, and other information.
         """
         context = Context()
@@ -150,8 +167,9 @@ class Context:  # pylint: disable=old-style-class
                 # Example of the format of the first line to read
                 # "# tasks:5 resources:3 rng_seed:0 algorithm:none"
                 first_line = csvfile.readline()
-                # We decompose the line into a dictionary while ignoring extremities
-                first_info = dict(x.split(":") for x in first_line[2:-1].split(" "))
+                # We decompose the line into a dict while ignoring extremities
+                first_info = dict(x.split(":")
+                                  for x in first_line[2:-1].split(" "))
                 # Then we write this information in an Statistics object
                 context.stats = Statistics(
                     num_tasks=int(first_info["tasks"]),
@@ -204,7 +222,8 @@ class Context:  # pylint: disable=old-style-class
 
         Notes
         -----
-        Each line of the file contains a task identifier, its load, and its mapping.
+        Each line of the file contains a task identifier, its load, and its
+        mapping.
         A header informs the number of tasks, resources, and other information.
         """
         try:
@@ -255,3 +274,12 @@ class Context:  # pylint: disable=old-style-class
             self.resources[current_resource].load -= task.load
             self.resources[new_resource].load += task.load
             task.mapping = new_resource
+        # Prints information about the new mapping
+        if self.stats.report is True:
+            print(("- Task {task} (load {load})" +
+                   " migrating from {old} to {new}.")
+                  .format(task=str(task_id),
+                          load=str(task.load),
+                          old=str(current_resource),
+                          new=str(new_resource),
+                          ))
