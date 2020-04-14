@@ -1,12 +1,13 @@
 """
 Context module. Contains the representations of tasks and resources for scheduling.
 
-Each task has an identifier, a load, and a mapping.
-Each resource has an identifier and a load.
+Each task has a load, and a mapping.
+Each resource has a load.
 The whole context contains a list of tasks, a list of resources, and some scheduling statistics.
 """
 
 import csv                      # for handling csv files
+from collections import OrderedDict
 
 class Task:  # pylint: disable=old-style-class,too-few-public-methods
     """
@@ -14,15 +15,14 @@ class Task:  # pylint: disable=old-style-class,too-few-public-methods
 
     Attributes
     ----------
-    identifier : int
     load : int
+        Load of the task
     mapping : int
         Mapping of the task to a resource
     """
 
-    def __init__(self, identifier=0, load=0, mapping=0):
-        """Creates a task with an id, a load, and a mapping"""
-        self.identifier = identifier
+    def __init__(self, load=0, mapping=0):
+        """Creates a task with a load and a mapping"""
         self.load = load
         self.mapping = mapping
 
@@ -32,13 +32,12 @@ class Resource:  # pylint: disable=old-style-class,too-few-public-methods
 
     Attributes
     ----------
-    identifier : int
     load : int
+        Load of the resource
     """
 
-    def __init__(self, identifier=0, load=0):
+    def __init__(self, load=0):
         """Creates a resource with an id and a load"""
-        self.identifier = identifier
         self.load = load
 
 class Statistics:  # pylint: disable=old-style-class,too-few-public-methods
@@ -75,18 +74,47 @@ class Context:  # pylint: disable=old-style-class
 
     Attributes
     ----------
-    tasks : list of Task
+    tasks : OrderedDict of Task
         List of all tasks
-    resources : list of Resource
+    resources : OrderedDict of Resource
         List of all resources
     stats : Statistics object
         Statistics of the scheduling context
     """
     def __init__(self):
         """Creates an empty scheduling context"""
-        self.tasks = list()
-        self.resources = list()
+        self.tasks = OrderedDict()
+        self.resources = OrderedDict()
         self.stats = Statistics()
+
+    def check_consistency(self):
+        """
+        Checks the consistency of scheduling data.
+
+        Returns
+        -------
+        bool
+            True if the context is consistent, False otherwise.
+
+        Notes
+        -----
+        The consistency check verifies that all task identifiers are within range,
+        the number of tasks corresponds to the expect value,
+        and that no tasks have negative loads.
+        """
+        tasks = self.tasks
+        num_tasks = self.stats.num_tasks
+        # Checks the number of tasks
+        if len(tasks) != num_tasks:
+            return False
+        # Checks the identifiers and loads of tasks
+        for identifier, task in tasks.items():
+            if identifier >= num_tasks:
+                return False
+            if task.load < 0:
+                return False
+        # No issues were found
+        return True
 
     @staticmethod
     def from_csv(filename="scenario.csv"):
@@ -101,14 +129,15 @@ class Context:  # pylint: disable=old-style-class
         Returns
         -------
         Context object
-            Scheduling context read from CSV file.
+            Scheduling context read from CSV file or empty context.
 
         Raises
         ------
         IOError
             If the file cannot be found or open.
         KeyError
-            If the file does not contain the correct keywords (e.g., 'tasks').
+            If the file does not contain the correct keywords (e.g., 'tasks'),
+            or tasks have inconsistent identifiers or negative loads.
 
         Notes
         -----
@@ -135,26 +164,28 @@ class Context:  # pylint: disable=old-style-class
                 reader = csv.DictReader(csvfile)
                 for line in reader:
                     # Each line generates a task
-                    context.tasks.append(Task(
-                        identifier=int(line['task_id']),
+                    context.tasks[int(line['task_id'])] = Task(
                         load=int(line['task_load']),
                         mapping=int(line['task_mapping']),
-                        ))
+                        )
 
                 # Finally, we generate the list of resources
                 # and update them based on tasks mapped to them
-                context.resources = list(
-                    Resource(x, 0) for x in range(context.stats.num_resources)
-                    )
-                for task in context.tasks:
+                for identifier in range(context.stats.num_resources):
+                    context.resources[identifier] = Resource(0)
+                for task in context.tasks.values():
                     resource_id = task.mapping
                     context.resources[resource_id].load += task.load
 
         except IOError:
             print("Error: could not read file "+filename+".")
         except KeyError:
-            print("Error: file "+filename+" contains non-standard formating.")
+            print("Error: file "+filename+" contains non-standard formating or incorrect keys.")
 
+        # Checks the context for any inconsistencies
+        # If any are found, we generate an empty context
+        if context.check_consistency() is False:
+            context = Context()
         return context
 
     def to_csv(self, filename="scenario.csv"):
@@ -191,8 +222,8 @@ class Context:  # pylint: disable=old-style-class
                 csvfile.write("task_id,task_load,task_mapping\n")
 
                 # After that, we write each line with a task
-                for task in self.tasks:
-                    line = str(task.identifier) + "," + \
+                for identifier, task in self.tasks.items():
+                    line = str(identifier) + "," + \
                            str(task.load) + "," + \
                            str(task.mapping) + "\n"
                     csvfile.write(line)
