@@ -3,8 +3,8 @@
 Context module. Contains the representations of tasks and resources for
 scheduling.
 
-Each task has an identifier, a load, and a mapping.
-Each resource has an identifier and a load.
+Each task has a load, and a mapping.
+Each resource has a load.
 The whole context contains a list of tasks, a list of resources, and some
 scheduling statistics.
 """
@@ -114,14 +114,23 @@ class Context:
         """
         tasks = self.tasks
         num_tasks = self.stats.num_tasks
+        resources = self.resources
+        num_resources = self.stats.num_resources
         # Checks the number of tasks
         if len(tasks) != num_tasks:
             return False
         # Checks the identifiers and loads of tasks
-        for identifier, task in tasks.items():
-            if identifier >= num_tasks:
+        for task_id, task in tasks.items():
+            if task_id > num_tasks:
                 return False
             if task.load < 0:
+                return False
+            if task.mapping > num_resources:
+                return False
+        for resource_id, resource in resources.items():
+            if resource_id > num_resources:
+                return False
+            if resource.load < 0:
                 return False
         # No issues were found
         return True
