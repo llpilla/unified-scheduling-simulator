@@ -3,16 +3,10 @@
 Context module. Contains the representations of tasks and resources for
 scheduling.
 
-<<<<<<< HEAD
-Each task has a load, and a mapping.
-Each resource has a load.
-The whole context contains a list of tasks, a list of resources, and some scheduling statistics.
-=======
 Each task has an identifier, a load, and a mapping.
 Each resource has an identifier and a load.
 The whole context contains a list of tasks, a list of resources, and some
 scheduling statistics.
->>>>>>> feature/scheduling-algorithm
 """
 
 import csv                      # for handling csv files
@@ -114,9 +108,9 @@ class Context:
 
         Notes
         -----
-        The consistency check verifies that all task identifiers are within range,
-        the number of tasks corresponds to the expect value,
-        and that no tasks have negative loads.
+        The consistency check verifies that all task identifiers are within
+        range, the number of tasks corresponds to the expect value, and that
+        no tasks have negative loads.
         """
         tasks = self.tasks
         num_tasks = self.stats.num_tasks
@@ -198,7 +192,8 @@ class Context:
         except IOError:
             print("Error: could not read file "+filename+".")
         except KeyError:
-            print("Error: file "+filename+" contains non-standard formating or incorrect keys.")
+            print("Error: file "+filename+" contains non-standard" +
+                  " formating or incorrect keys.")
 
         # Checks the context for any inconsistencies
         # If any are found, we generate an empty context
