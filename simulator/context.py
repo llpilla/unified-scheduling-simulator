@@ -1,3 +1,4 @@
+# This code has only been tested with Python 3.
 """
 Context module. Contains the representations of tasks and resources for scheduling.
 
@@ -58,15 +59,19 @@ class Statistics:  # pylint: disable=old-style-class,too-few-public-methods
         Random number generator seed
     algorithm : string
         Name of scheduling algorithm
+    report : bool
+        True if scheduling information should be reported during execution
     """
 
-    def __init__(self, num_tasks=0, num_resources=0, rng_seed=0, algorithm='none'):
+    def __init__(self, num_tasks=0, num_resources=0, # pylint: disable=too-many-arguments
+                 rng_seed=0, algorithm='none', report=False):
         """Creates scheduling statistics"""
         self.migrations = 0
         self.num_tasks = num_tasks
         self.num_resources = num_resources
         self.rng_seed = rng_seed
         self.algorithm = algorithm
+        self.report = report
 
 # Context for scheduling
 class Context:  # pylint: disable=old-style-class
@@ -224,3 +229,12 @@ class Context:  # pylint: disable=old-style-class
             self.resources[current_resource].load -= task.load
             self.resources[new_resource].load += task.load
             task.mapping = new_resource
+        # Prints information about the new mapping
+        if self.stats.report is True:
+            print(("- Task {task} (load {load})" +
+                   " migrating from {old} to {new}.") \
+                   .format(task=str(task_id), \
+                           load=str(task.load), \
+                           old=str(current_resource), \
+                           new=str(new_resource), \
+                           ))
