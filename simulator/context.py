@@ -10,6 +10,8 @@ scheduling statistics.
 """
 
 import csv                      # for handling csv files
+import copy
+import random
 from collections import OrderedDict
 
 
@@ -19,7 +21,7 @@ class Task:
 
     Attributes
     ----------
-    load : int
+    load : int or float
         Load of the task
     mapping : int
         Mapping of the task to a resource
@@ -37,7 +39,7 @@ class Resource:
 
     Attributes
     ----------
-    load : int
+    load : int or float
         Load of the resource
     """
 
@@ -64,6 +66,8 @@ class Context:
         True if scheduling information should be reported during execution
     total_migrations : int
         Total number of tasks migrated
+    round_migrations : int
+        Number of migrations during a round
     """
     def __init__(self):
         """Creates an empty scheduling context"""
@@ -73,6 +77,7 @@ class Context:
         self.algorithm_name = "None"
         self.report = False
         self.total_migrations = 0
+        self.round_migrations = 0
 
     def num_tasks(self):
         """Returns the number of tasks in the context"""
@@ -165,7 +170,7 @@ class Context:
                 for line in reader:
                     # Each line generates a task
                     context.tasks[int(line['task_id'])] = Task(
-                        load=int(line['task_load']),
+                        load=float(line['task_load']),
                         mapping=int(line['task_mapping']),
                         )
 
@@ -257,6 +262,7 @@ class Context:
             self.resources[new_resource].load += task.load
             task.mapping = new_resource
             self.total_migrations += 1
+            self.round_migrations += 1
         # Prints information about the new mapping
         if self.report is True:
             print(("- Task {task} (load {load})" +
@@ -266,6 +272,22 @@ class Context:
                           old=str(current_resource),
                           new=str(new_resource),
                           ))
+
+    def avg_resource_load(self):
+        """Computes the average resource load"""
+        # Computes total load
+        total_load = 0
+        for resource in self.resources.values():
+            total_load += resource.load
+        avg_load = total_load / self.num_resources()  # Computes the average
+        return avg_load
+
+    def max_resource_load(self):
+        """Computes the maximum resource load"""
+        max_load = 0
+        for resource in self.resources.values():
+            max_load = max(max_load, resource.load)
+        return max_load
 
 
 class DistributedContext(Context):
@@ -298,11 +320,15 @@ class DistributedContext(Context):
         List of tasks for the round
     round_resources
         List of resources for the round
+    avg_load : float
+        Average resource load
+    epsilon : float
+        Accepted divergence from the average resource load for convergence
     """
+
     def __init__(self):
         """Creates an empty distributed scheduling context."""
-        super().__init__()
-        self.round_migrations = 0
+        Context.__init__(self)
         self.round_number = 0
         self.total_load_checks = 0
         self.round_load_checks = 0
@@ -310,8 +336,21 @@ class DistributedContext(Context):
         self.round_resources = []
 
     @staticmethod
-    def from_context(context):
-        """Creates a distributed scheduling context from a basic context."""
+    def from_context(context, epsilon=1.05):
+        """
+        Creates a distributed scheduling context from a basic context.
+
+        Parameters
+        ----------
+        context : Context object
+            Basic scheduling context
+        epsilon : float, optional (standard = 1.05)
+            Accepted divergence from the average resource load for convergence
+
+        Returns
+        -------
+        DistributedContext object
+        """
         dist_context = DistributedContext()
 
         dist_context.tasks = context.tasks
@@ -320,11 +359,14 @@ class DistributedContext(Context):
         dist_context.algorithm_name = context.algorithm_name
         dist_context.report = context.report
         dist_context.total_migrations = context.total_migrations
+        dist_context.round_migrations = context.round_migrations
+        dist_context.avg_load = dist_context.avg_resource_load()
+        dist_context.epsilon = epsilon
 
         return dist_context
 
     @staticmethod
-    def from_csv(filename="scenario.csv"):
+    def from_csv(filename="scenario.csv", epsilon=1.05):
         """
         Imports a scheduling context from a CSV file.
 
@@ -332,10 +374,12 @@ class DistributedContext(Context):
         ----------
         filename : string
             Name of the CSV file containing the scheduling context.
+        epsilon : float, optional (standard = 1.05)
+            Accepted divergence from the average resource load for convergence
 
         Returns
         -------
-        Context object
+        DistributedContext object
             Scheduling context read from CSV file or empty context.
 
         Raises
@@ -355,3 +399,100 @@ class DistributedContext(Context):
         base_context = Context.from_csv(filename)
         dist_context = DistributedContext.from_context(base_context)
         return dist_context
+
+    def has_converged(self):
+        """
+        Checks if the scheduler has converged.
+
+        Convergence is defined as a situation where all resources have loads
+        inferior to the average resource load times an epsilon.
+
+        Returns
+        -------
+        bool
+            True if the scheduler has converged, else otherwise
+        """
+        max_load = self.max_resource_load()
+        convergence = max_load <= (self.avg_load * self.epsilon)
+        return convergence
+
+    def round_update(self):
+        """Updates round number, migrations, and load checks"""
+        self.round_number += 1
+        self.round_migrations = 0
+        self.round_load_checks = 0
+
+    def prepare_simple_round(self):
+        """
+        Prepares the context for a scheduling round.
+
+        A simple round uses a simple copy of the tasks and resources for
+        scheduling decisions.
+        """
+        # Updates round number, migrations and load checks
+        self.round_update()
+        self.round_tasks = copy.deepcopy(self.tasks)
+        self.round_resources = copy.deepcopy(self.resources)
+
+    def get_random_resource(self):
+        """
+        Returns a random resource from the resources available for the round
+
+        Returns
+        -------
+        resource_id, Resource object
+        """
+        resources = self.round_resources
+        # Picks a resource from the list at random
+        resource_id, resource = random.choice(list(resources.items()))
+        return resource_id, resource
+
+    def check_simple_viability(self, current_id, candidate_id):
+        """
+        Compares the load of the current and candidate resources.
+
+        Parameters
+        ----------
+        current_id : int
+            Current resource identifier
+        candidate_id : int
+            Candidate resource identifier
+
+        Returns
+        -------
+        bool
+            True if the load of the candidate resource is smaller than
+            the current resource's load.
+        """
+        self.round_load_checks += 1  # load of the other resource is checked
+        current_load = self.round_resources[current_id].load
+        candidate_load = self.round_resources[candidate_id].load
+        return current_load > candidate_load
+
+    def try_simple_migration(self, task_id, current_id, candidate_id):
+        """
+        Checks if a task should migrate following a simple test.
+
+        Parameters
+        ----------
+        task_id : int
+            Task identifier
+        current_id : int
+            Current resource identifier
+        candidate_id : int
+            Candidate resource identifier
+
+        Notes
+        -----
+        The probability to migrate is:
+        1 - (load of new resource / load of current resource)
+        """
+        resources = self.round_resources
+        # Gathers the loads of the two resources
+        current_load = resources[current_id].load
+        candidate_load = resources[candidate_id].load
+        # Computes the probability
+        probability = 1.0 - (candidate_load/current_load)
+        if probability > random.random():
+            # Migration happens
+            self.update_mapping(task_id, candidate_id)

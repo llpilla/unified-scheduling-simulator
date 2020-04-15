@@ -4,6 +4,7 @@ Scheduler module. Contains scheduling algorithms.
 Scheduling algorithms receive a context and reschedule tasks.
 """
 
+import random
 from simulator.heap import HeapFactory
 
 
@@ -34,7 +35,7 @@ class Scheduler:
         Parameters
         ----------
         context : Context object
-            Scheduling context to register information
+            Context to register information
         """
         context.rng_seed = self.rng_seed
         context.algorithm_name = self.name
@@ -50,7 +51,7 @@ class Scheduler:
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         self.__register_on_context(context)
 
@@ -80,7 +81,7 @@ class RoundRobinScheduler(Scheduler):
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         Scheduler.schedule(self, context)
 
@@ -118,7 +119,7 @@ class CompactScheduler(Scheduler):
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         Scheduler.schedule(self, context)
 
@@ -168,7 +169,7 @@ class ListScheduler(Scheduler):
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         Scheduler.schedule(self, context)
         # Creates a min heap of resources with zero load
@@ -205,7 +206,7 @@ class LPTScheduler(Scheduler):
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         Scheduler.schedule(self, context)
         # Creates a min heap of resources with zero load
@@ -224,3 +225,68 @@ class LPTScheduler(Scheduler):
             context.update_mapping(task_id, resource_id)
             resource_load += task_load
             resource_heap.push(resource_load, resource_id)
+
+
+class DistributedScheduler(Scheduler):
+    """
+    Base distributed scheduling algorithm class.
+    Provides methods for multiple distributed schedulers.
+    Extends the Scheduler class.
+    """
+
+    def __init__(self, report=False, rng_seed=0):
+        """Creates a distributed scheduler with its verbosity"""
+        Scheduler.__init__(self, name="DistributedScheduler",
+                           report=report, rng_seed=rng_seed)
+
+
+class SelfishScheduler(DistributedScheduler):
+    """
+    Selfish scheduling algorithm.
+
+    Notes
+    -----
+    Basic flow of a round:
+    for each task in parallel
+        choose a new resource at random
+        if the load of the current resource > new resource
+            migrate with a certain probability
+    """
+
+    def __init__(self, report=False, rng_seed=0):
+        Scheduler.__init__(self, name="Selfish",
+                           report=report, rng_seed=rng_seed)
+
+    def schedule(self, context):
+        """
+        Schedules tasks following a list scheduling policy.
+
+        Parameters
+        ----------
+        context : DistributedContext object
+            Context to schedule
+        """
+        Scheduler.schedule(self, context)
+
+        # Sets RNG seed before starting to schedule
+        random.seed(self.rng_seed)
+
+        print("Before rounds")
+        while context.has_converged() is False:
+            context.prepare_simple_round()
+            print("Round: " + str(context.round_number))
+            tasks = context.round_tasks
+            # Iterates while there are tasks in the round to check
+            while len(tasks) is not 0:
+                task_id, task = tasks.popitem(False)
+                resource_id, resource = context.get_random_resource()
+                viability = context.check_simple_viability(task.mapping,
+                                                           resource_id)
+                if viability is True:
+                    context.try_simple_migration(task_id,
+                                                 task.mapping,
+                                                 resource_id)
+
+
+
+
