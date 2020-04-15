@@ -227,7 +227,7 @@ class LPTScheduler(Scheduler):
             resource_heap.push(resource_load, resource_id)
 
 
-class DistributedScheduler(Scheduler):
+class DistScheduler(Scheduler):
     """
     Base distributed scheduling algorithm class.
     Provides methods for multiple distributed schedulers.
@@ -236,11 +236,60 @@ class DistributedScheduler(Scheduler):
 
     def __init__(self, report=False, rng_seed=0):
         """Creates a distributed scheduler with its verbosity"""
-        Scheduler.__init__(self, name="DistributedScheduler",
+        Scheduler.__init__(self, name="DistScheduler",
                            report=report, rng_seed=rng_seed)
 
+    def schedule(self, context):
+        """
+        Schedules tasks following a distributed scheduling algorithm.
 
-class SelfishScheduler(DistributedScheduler):
+        Parameters
+        ----------
+        context : DistributedContext object
+            Context to schedule
+        """
+        Scheduler.schedule(self, context)
+
+        # Sets RNG seed before starting to schedule
+        random.seed(self.rng_seed)
+
+        print("Before rounds")
+        while self.has_converged(context) is False:
+            self.prepare_round(context)
+            print("Round: " + str(context.round_number))
+            tasks = context.round_tasks
+            # Iterates while there are tasks in the round to check
+            while len(tasks) is not 0:
+                task_id, task = tasks.popitem(False)
+                resource_id, resource = self.get_candidate_resource(context)
+                self.check_migration(context, task_id,
+                                     task.mapping, resource_id)
+
+    """
+    Simple set of distributed scheduling methods.
+    Used by the Selfish algorith.
+
+    """
+    @staticmethod
+    def basic_convergence_check(context):
+        return context.has_converged()
+
+    @staticmethod
+    def basic_round(context):
+        return context.prepare_round()
+
+    @staticmethod
+    def basic_resource_selection(context):
+        return context.get_random_resource()
+
+    @staticmethod
+    def basic_migration_check(context, task_id, current_id, candidate_id):
+        viability = context.check_viability(current_id, candidate_id)
+        if viability is True:
+            context.try_migration(task_id, current_id, candidate_id)
+
+
+class SelfishScheduler(DistScheduler):
     """
     Selfish scheduling algorithm.
 
@@ -256,37 +305,7 @@ class SelfishScheduler(DistributedScheduler):
     def __init__(self, report=False, rng_seed=0):
         Scheduler.__init__(self, name="Selfish",
                            report=report, rng_seed=rng_seed)
-
-    def schedule(self, context):
-        """
-        Schedules tasks following a list scheduling policy.
-
-        Parameters
-        ----------
-        context : DistributedContext object
-            Context to schedule
-        """
-        Scheduler.schedule(self, context)
-
-        # Sets RNG seed before starting to schedule
-        random.seed(self.rng_seed)
-
-        print("Before rounds")
-        while context.has_converged() is False:
-            context.prepare_simple_round()
-            print("Round: " + str(context.round_number))
-            tasks = context.round_tasks
-            # Iterates while there are tasks in the round to check
-            while len(tasks) is not 0:
-                task_id, task = tasks.popitem(False)
-                resource_id, resource = context.get_random_resource()
-                viability = context.check_simple_viability(task.mapping,
-                                                           resource_id)
-                if viability is True:
-                    context.try_simple_migration(task_id,
-                                                 task.mapping,
-                                                 resource_id)
-
-
-
-
+        self.has_converged = DistScheduler.basic_convergence_check
+        self.prepare_round = DistScheduler.basic_round
+        self.get_candidate_resource = DistScheduler.basic_resource_selection
+        self.check_migration = DistScheduler.basic_migration_check

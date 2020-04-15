@@ -422,7 +422,7 @@ class DistributedContext(Context):
         self.round_migrations = 0
         self.round_load_checks = 0
 
-    def prepare_simple_round(self):
+    def prepare_round(self):
         """
         Prepares the context for a scheduling round.
 
@@ -447,7 +447,7 @@ class DistributedContext(Context):
         resource_id, resource = random.choice(list(resources.items()))
         return resource_id, resource
 
-    def check_simple_viability(self, current_id, candidate_id):
+    def check_viability(self, current_id, candidate_id):
         """
         Compares the load of the current and candidate resources.
 
@@ -469,7 +469,7 @@ class DistributedContext(Context):
         candidate_load = self.round_resources[candidate_id].load
         return current_load > candidate_load
 
-    def try_simple_migration(self, task_id, current_id, candidate_id):
+    def try_migration(self, task_id, current_id, candidate_id):
         """
         Checks if a task should migrate following a simple test.
 
