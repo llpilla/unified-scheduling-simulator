@@ -4,7 +4,7 @@ Scheduler module. Contains scheduling algorithms.
 Scheduling algorithms receive a context and reschedule tasks.
 """
 
-import simulator.heap
+from simulator.heap import HeapFactory
 
 
 class Scheduler:
@@ -36,9 +36,9 @@ class Scheduler:
         context : Context object
             Scheduling context to register information
         """
-        context.stats.rng_seed = self.rng_seed
-        context.stats.algorithm = self.name
-        context.stats.report = self.report
+        context.rng_seed = self.rng_seed
+        context.algorithm_name = self.name
+        context.report = self.report
 
     def schedule(self, context):
         """
@@ -84,8 +84,8 @@ class RoundRobinScheduler(Scheduler):
         """
         Scheduler.schedule(self, context)
 
-        num_tasks = len(context.tasks)
-        num_resources = len(context.resources)
+        num_tasks = context.num_tasks()
+        num_resources = context.num_resources()
 
         # Iterates mapping tasks to resources in order
         for task_id in range(num_tasks):
@@ -122,8 +122,8 @@ class CompactScheduler(Scheduler):
         """
         Scheduler.schedule(self, context)
 
-        num_tasks = len(context.tasks)
-        num_resources = len(context.resources)
+        num_tasks = context.num_tasks()
+        num_resources = context.num_resources()
 
         # Size of partitions
         partition_size = num_tasks // num_resources
@@ -161,26 +161,6 @@ class ListScheduler(Scheduler):
         """Creates a List scheduler with its verbosity"""
         Scheduler.__init__(self, name="ListScheduler", report=report)
 
-    def create_unloaded_resource_heap(self, num_resources):
-        """
-        Creates a min-heap based for resources with zero load.
-
-        Parameters
-        ----------
-        num_resources : int
-            Size of the heap to create
-
-        Returns
-        -------
-        heap
-            MinHeap of pairs (load, resource_id)
-        """
-        heap = simulator.heap.MinHeap()
-        for resource_id in range(num_resources):
-            # Each resource starts here with an empty load
-            heap.push(0, resource_id)
-        return heap
-
     def schedule(self, context):
         """
         Schedules tasks following a list scheduling policy.
@@ -192,8 +172,8 @@ class ListScheduler(Scheduler):
         """
         Scheduler.schedule(self, context)
         # Creates a min heap of resources with zero load
-        num_resources = len(context.resources)
-        resource_heap = self.create_unloaded_resource_heap(num_resources)
+        num_resources = context.num_resources()
+        resource_heap = HeapFactory.create_unloaded_heap(num_resources, 'min')
         # Iterates over tasks mapping them to the least loaded resource
         for task_id, task in context.tasks.items():
             # Finds the least loaded resource
@@ -219,26 +199,6 @@ class LPTScheduler(ListScheduler):
         """Creates a List scheduler with its verbosity"""
         Scheduler.__init__(self, name="LPTScheduler", report=report)
 
-    def create_task_heap(self, tasks):
-        """
-        Creates a max-heap based for resources with zero load.
-
-        Parameters
-        ----------
-        tasks : OrderedDict of Task objects
-            Tasks to be used in the creation of the heap
-
-        Returns
-        -------
-        heap
-            MaxHeap of pairs (load, task_id)
-        """
-        heap = simulator.heap.MaxHeap()
-        for task_id, task in tasks.items():
-            # Adds each task with its load in the heap
-            heap.push(task.load, task_id)
-        return heap
-
     def schedule(self, context):
         """
         Schedules tasks following a list scheduling policy.
@@ -250,11 +210,11 @@ class LPTScheduler(ListScheduler):
         """
         Scheduler.schedule(self, context)
         # Creates a min heap of resources with zero load
-        num_resources = len(context.resources)
-        resource_heap = self.create_unloaded_resource_heap(num_resources)
+        num_resources = context.num_resources()
+        resource_heap = HeapFactory.create_unloaded_heap(num_resources, 'min')
         # Createa a max heap of tasks
-        num_tasks = len(context.tasks)
-        task_heap = self.create_task_heap(context.tasks)
+        num_tasks = context.num_tasks()
+        task_heap = HeapFactory.create_loaded_heap(context.tasks, 'max')
 
         # Iterates over tasks
         # Maps the most loaded task to the least loaded resource

@@ -46,38 +46,6 @@ class Resource:
         self.load = load
 
 
-class Statistics:
-    """
-    Statistics of the scheduling context.
-    Containts information related to tasks, resources, and migrations.
-
-    Attributes
-    ----------
-    migrations : int
-        Number of task migrations during a scheduling round
-    num_tasks : int
-        Number of tasks
-    num_resources : int
-        Number of resources
-    rng_seed : int
-        Random number generator seed
-    algorithm : string
-        Name of scheduling algorithm
-    report : bool
-        True if scheduling information should be reported during execution
-    """
-
-    def __init__(self, num_tasks=0, num_resources=0,
-                 rng_seed=0, algorithm='none', report=False):
-        """Creates scheduling statistics"""
-        self.migrations = 0
-        self.num_tasks = num_tasks
-        self.num_resources = num_resources
-        self.rng_seed = rng_seed
-        self.algorithm = algorithm
-        self.report = report
-
-
 class Context:
     """
     Scheduling context. Contains tasks, resources, and statistics.
@@ -88,14 +56,31 @@ class Context:
         List of all tasks
     resources : OrderedDict of Resource
         List of all resources
-    stats : Statistics object
-        Statistics of the scheduling context
+    rng_seed : int
+        Random number generator seed
+    algorithm_name : string
+        Name of scheduling algorithm
+    report : bool
+        True if scheduling information should be reported during execution
+    total_migrations : int
+        Total number of tasks migrated
     """
     def __init__(self):
         """Creates an empty scheduling context"""
         self.tasks = OrderedDict()
         self.resources = OrderedDict()
-        self.stats = Statistics()
+        self.rng_seed = 0
+        self.algorithm_name = "None"
+        self.report = False
+        self.total_migrations = 0
+
+    def num_tasks(self):
+        """Returns the number of tasks in the context"""
+        return len(self.tasks)
+
+    def num_resources(self):
+        """Returns the number of resources in the context"""
+        return len(self.resources)
 
     def check_consistency(self):
         """
@@ -113,22 +98,19 @@ class Context:
         no tasks have negative loads.
         """
         tasks = self.tasks
-        num_tasks = self.stats.num_tasks
+        num_tasks = self.num_tasks()
         resources = self.resources
-        num_resources = self.stats.num_resources
-        # Checks the number of tasks
-        if len(tasks) != num_tasks:
-            return False
+        num_resources = self.num_resources()
         # Checks the identifiers and loads of tasks
         for task_id, task in tasks.items():
-            if task_id > num_tasks:
+            if task_id >= num_tasks:
                 return False
             if task.load < 0:
                 return False
-            if task.mapping > num_resources:
+            if task.mapping >= num_resources:
                 return False
         for resource_id, resource in resources.items():
-            if resource_id > num_resources:
+            if resource_id >= num_resources:
                 return False
             if resource.load < 0:
                 return False
@@ -173,13 +155,10 @@ class Context:
                 # We decompose the line into a dict while ignoring extremities
                 first_info = dict(x.split(":")
                                   for x in first_line[2:-1].split(" "))
-                # Then we write this information in an Statistics object
-                context.stats = Statistics(
-                    num_tasks=int(first_info["tasks"]),
-                    num_resources=int(first_info["resources"]),
-                    rng_seed=int(first_info["rng_seed"]),
-                    algorithm=first_info["algorithm"],
-                    )
+                # and we save each component for use
+                num_resources = int(first_info["resources"])
+                context.rng_seed = int(first_info["rng_seed"])
+                context.algorithm_name = first_info["algorithm"]
 
                 # After that, we read the other lines of the CSV file
                 reader = csv.DictReader(csvfile)
@@ -192,7 +171,7 @@ class Context:
 
                 # Finally, we generate the list of resources
                 # and update them based on tasks mapped to them
-                for identifier in range(context.stats.num_resources):
+                for identifier in range(num_resources):
                     context.resources[identifier] = Resource(0)
                 for task in context.tasks.values():
                     resource_id = task.mapping
@@ -234,11 +213,10 @@ class Context:
             with open(filename, 'w') as csvfile:
                 # Example of the format of the first line to write
                 # "# tasks:5 resources:3 rng_seed:0 algorithm:none"
-                stats = self.stats
-                comment = "# tasks:" + str(stats.num_tasks) + \
-                          " resources:" + str(stats.num_resources) + \
-                          " rng_seed:" + str(stats.rng_seed) + \
-                          " algorithm:" + stats.algorithm + "\n"
+                comment = "# tasks:" + str(self.num_tasks()) + \
+                          " resources:" + str(self.num_resources()) + \
+                          " rng_seed:" + str(self.rng_seed) + \
+                          " algorithm:" + self.algorithm_name + "\n"
                 csvfile.write(comment)
 
                 # CSV header: "task_id,task_load,task_mapping"
@@ -278,8 +256,9 @@ class Context:
             self.resources[current_resource].load -= task.load
             self.resources[new_resource].load += task.load
             task.mapping = new_resource
+            self.total_migrations += 1
         # Prints information about the new mapping
-        if self.stats.report is True:
+        if self.report is True:
             print(("- Task {task} (load {load})" +
                    " migrating from {old} to {new}.")
                   .format(task=str(task_id),
