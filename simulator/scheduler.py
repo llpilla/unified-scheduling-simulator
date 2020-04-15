@@ -184,10 +184,9 @@ class ListScheduler(Scheduler):
             resource_heap.push(resource_load, resource_id)
 
 
-class LPTScheduler(ListScheduler):
+class LPTScheduler(Scheduler):
     """
-    Largest Processing Time scheduling algorithm.
-    Inherits from the ListScheduler class.
+    Largest Processing Time scheduling algorithm. Inherits from Scheduler class
 
     Notes
     -----

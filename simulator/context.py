@@ -266,3 +266,92 @@ class Context:
                           old=str(current_resource),
                           new=str(new_resource),
                           ))
+
+
+class DistributedContext(Context):
+    """
+    Scheduling context for distributed schedulers. Extends Context.
+
+    Attributes
+    ----------
+    tasks : OrderedDict of Task
+        List of all tasks
+    resources : OrderedDict of Resource
+        List of all resources
+    rng_seed : int
+        Random number generator seed
+    algorithm_name : string
+        Name of scheduling algorithm
+    report : bool
+        True if scheduling information should be reported during execution
+    total_migrations : int
+        Total number of tasks migrated
+    round_migrations : int
+        Number of migrations during a round
+    round_number : int
+        Number of the round
+    total_load_checks : int
+        Total number of times the load of a resource is checked
+    round_load_checks : int
+        Number of times the load of resources is checked during a round
+    round_tasks
+        List of tasks for the round
+    round_resources
+        List of resources for the round
+    """
+    def __init__(self):
+        """Creates an empty distributed scheduling context."""
+        super().__init__()
+        self.round_migrations = 0
+        self.round_number = 0
+        self.total_load_checks = 0
+        self.round_load_checks = 0
+        self.round_tasks = []
+        self.round_resources = []
+
+    @staticmethod
+    def from_context(context):
+        """Creates a distributed scheduling context from a basic context."""
+        dist_context = DistributedContext()
+
+        dist_context.tasks = context.tasks
+        dist_context.resources = context.resources
+        dist_context.rng_seed = context.rng_seed
+        dist_context.algorithm_name = context.algorithm_name
+        dist_context.report = context.report
+        dist_context.total_migrations = context.total_migrations
+
+        return dist_context
+
+    @staticmethod
+    def from_csv(filename="scenario.csv"):
+        """
+        Imports a scheduling context from a CSV file.
+
+        Parameters
+        ----------
+        filename : string
+            Name of the CSV file containing the scheduling context.
+
+        Returns
+        -------
+        Context object
+            Scheduling context read from CSV file or empty context.
+
+        Raises
+        ------
+        IOError
+            If the file cannot be found or open.
+        KeyError
+            If the file does not contain the correct keywords (e.g., 'tasks'),
+            or tasks have inconsistent identifiers or negative loads.
+
+        Notes
+        -----
+        Each line of the file contains a task identifier, its load, and its
+        mapping.
+        A header informs the number of tasks, resources, and other information.
+        """
+        base_context = Context.from_csv(filename)
+        dist_context = DistributedContext.from_context(base_context)
+        return dist_context
