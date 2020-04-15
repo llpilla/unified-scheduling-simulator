@@ -4,7 +4,8 @@ Scheduler module. Contains scheduling algorithms.
 Scheduling algorithms receive a context and reschedule tasks.
 """
 
-import simulator.heap
+import random
+from simulator.heap import HeapFactory
 
 
 class Scheduler:
@@ -34,11 +35,11 @@ class Scheduler:
         Parameters
         ----------
         context : Context object
-            Scheduling context to register information
+            Context to register information
         """
-        context.stats.rng_seed = self.rng_seed
-        context.stats.algorithm = self.name
-        context.stats.report = self.report
+        context.rng_seed = self.rng_seed
+        context.algorithm_name = self.name
+        context.report = self.report
 
     def schedule(self, context):
         """
@@ -50,7 +51,7 @@ class Scheduler:
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         self.__register_on_context(context)
 
@@ -80,12 +81,12 @@ class RoundRobinScheduler(Scheduler):
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         Scheduler.schedule(self, context)
 
-        num_tasks = len(context.tasks)
-        num_resources = len(context.resources)
+        num_tasks = context.num_tasks()
+        num_resources = context.num_resources()
 
         # Iterates mapping tasks to resources in order
         for task_id in range(num_tasks):
@@ -118,12 +119,12 @@ class CompactScheduler(Scheduler):
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         Scheduler.schedule(self, context)
 
-        num_tasks = len(context.tasks)
-        num_resources = len(context.resources)
+        num_tasks = context.num_tasks()
+        num_resources = context.num_resources()
 
         # Size of partitions
         partition_size = num_tasks // num_resources
@@ -161,26 +162,6 @@ class ListScheduler(Scheduler):
         """Creates a List scheduler with its verbosity"""
         Scheduler.__init__(self, name="ListScheduler", report=report)
 
-    def create_unloaded_resource_heap(self, num_resources):
-        """
-        Creates a min-heap based for resources with zero load.
-
-        Parameters
-        ----------
-        num_resources : int
-            Size of the heap to create
-
-        Returns
-        -------
-        heap
-            MinHeap of pairs (load, resource_id)
-        """
-        heap = simulator.heap.MinHeap()
-        for resource_id in range(num_resources):
-            # Each resource starts here with an empty load
-            heap.push(0, resource_id)
-        return heap
-
     def schedule(self, context):
         """
         Schedules tasks following a list scheduling policy.
@@ -188,12 +169,12 @@ class ListScheduler(Scheduler):
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         Scheduler.schedule(self, context)
         # Creates a min heap of resources with zero load
-        num_resources = len(context.resources)
-        resource_heap = self.create_unloaded_resource_heap(num_resources)
+        num_resources = context.num_resources()
+        resource_heap = HeapFactory.create_unloaded_heap(num_resources, 'min')
         # Iterates over tasks mapping them to the least loaded resource
         for task_id, task in context.tasks.items():
             # Finds the least loaded resource
@@ -204,10 +185,9 @@ class ListScheduler(Scheduler):
             resource_heap.push(resource_load, resource_id)
 
 
-class LPTScheduler(ListScheduler):
+class LPTScheduler(Scheduler):
     """
-    Largest Processing Time scheduling algorithm.
-    Inherits from the ListScheduler class.
+    Largest Processing Time scheduling algorithm. Inherits from Scheduler class
 
     Notes
     -----
@@ -219,26 +199,6 @@ class LPTScheduler(ListScheduler):
         """Creates a List scheduler with its verbosity"""
         Scheduler.__init__(self, name="LPTScheduler", report=report)
 
-    def create_task_heap(self, tasks):
-        """
-        Creates a max-heap based for resources with zero load.
-
-        Parameters
-        ----------
-        tasks : OrderedDict of Task objects
-            Tasks to be used in the creation of the heap
-
-        Returns
-        -------
-        heap
-            MaxHeap of pairs (load, task_id)
-        """
-        heap = simulator.heap.MaxHeap()
-        for task_id, task in tasks.items():
-            # Adds each task with its load in the heap
-            heap.push(task.load, task_id)
-        return heap
-
     def schedule(self, context):
         """
         Schedules tasks following a list scheduling policy.
@@ -246,15 +206,15 @@ class LPTScheduler(ListScheduler):
         Parameters
         ----------
         context : Context object
-            Scheduling context to schedule
+            Context to schedule
         """
         Scheduler.schedule(self, context)
         # Creates a min heap of resources with zero load
-        num_resources = len(context.resources)
-        resource_heap = self.create_unloaded_resource_heap(num_resources)
+        num_resources = context.num_resources()
+        resource_heap = HeapFactory.create_unloaded_heap(num_resources, 'min')
         # Createa a max heap of tasks
-        num_tasks = len(context.tasks)
-        task_heap = self.create_task_heap(context.tasks)
+        num_tasks = context.num_tasks()
+        task_heap = HeapFactory.create_loaded_heap(context.tasks, 'max')
 
         # Iterates over tasks
         # Maps the most loaded task to the least loaded resource
@@ -265,3 +225,87 @@ class LPTScheduler(ListScheduler):
             context.update_mapping(task_id, resource_id)
             resource_load += task_load
             resource_heap.push(resource_load, resource_id)
+
+
+class DistScheduler(Scheduler):
+    """
+    Base distributed scheduling algorithm class.
+    Provides methods for multiple distributed schedulers.
+    Extends the Scheduler class.
+    """
+
+    def __init__(self, report=False, rng_seed=0):
+        """Creates a distributed scheduler with its verbosity"""
+        Scheduler.__init__(self, name="DistScheduler",
+                           report=report, rng_seed=rng_seed)
+
+    def schedule(self, context):
+        """
+        Schedules tasks following a distributed scheduling algorithm.
+
+        Parameters
+        ----------
+        context : DistributedContext object
+            Context to schedule
+        """
+        Scheduler.schedule(self, context)
+
+        # Sets RNG seed before starting to schedule
+        random.seed(self.rng_seed)
+
+        print("Before rounds")
+        while self.has_converged(context) is False:
+            self.prepare_round(context)
+            print("Round: " + str(context.round_number))
+            tasks = context.round_tasks
+            # Iterates while there are tasks in the round to check
+            while len(tasks) is not 0:
+                task_id, task = tasks.popitem(False)
+                resource_id, resource = self.get_candidate_resource(context)
+                self.check_migration(context, task_id,
+                                     task.mapping, resource_id)
+
+    """
+    Simple set of distributed scheduling methods.
+    Used by the Selfish algorith.
+
+    """
+    @staticmethod
+    def basic_convergence_check(context):
+        return context.has_converged()
+
+    @staticmethod
+    def basic_round(context):
+        return context.prepare_round()
+
+    @staticmethod
+    def basic_resource_selection(context):
+        return context.get_random_resource()
+
+    @staticmethod
+    def basic_migration_check(context, task_id, current_id, candidate_id):
+        viability = context.check_viability(current_id, candidate_id)
+        if viability is True:
+            context.try_migration(task_id, current_id, candidate_id)
+
+
+class SelfishScheduler(DistScheduler):
+    """
+    Selfish scheduling algorithm.
+
+    Notes
+    -----
+    Basic flow of a round:
+    for each task in parallel
+        choose a new resource at random
+        if the load of the current resource > new resource
+            migrate with a certain probability
+    """
+
+    def __init__(self, report=False, rng_seed=0):
+        Scheduler.__init__(self, name="Selfish",
+                           report=report, rng_seed=rng_seed)
+        self.has_converged = DistScheduler.basic_convergence_check
+        self.prepare_round = DistScheduler.basic_round
+        self.get_candidate_resource = DistScheduler.basic_resource_selection
+        self.check_migration = DistScheduler.basic_migration_check
