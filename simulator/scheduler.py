@@ -20,15 +20,19 @@ class Scheduler:
         True if scheduling information should be reported during execution
     rng_seed : int, optional
         Random number generator seed
+    bundle_size : int or float, optional
+        Size of bundle of tasks (in load) for bundled schedulers
     """
 
-    def __init__(self, name="empty-scheduler", report=False, rng_seed=0):
+    def __init__(self, name="empty-scheduler", report=False,
+                 rng_seed=0, bundle_size=10):
         """Creates a scheduler with its name, verbosity, and RNG seed"""
         self.name = name
         self.report = report
         self.rng_seed = rng_seed
+        self.bundle_size = bundle_size
 
-    def __register_on_context(self, context):
+    def register_on_context(self, context):
         """
         Registers information about the scheduling algorithm in the context
 
@@ -40,20 +44,7 @@ class Scheduler:
         context.rng_seed = self.rng_seed
         context.algorithm_name = self.name
         context.report = self.report
-
-    def schedule(self, context):
-        """
-        Applies the scheduling algorithm over a scheduling context.
-
-        The Scheduler class only does basic registering operations and no
-        actual scheduling.
-
-        Parameters
-        ----------
-        context : Context object
-            Context to schedule
-        """
-        self.__register_on_context(context)
+        context.bundle_size = self.bundle_size
 
 
 class RoundRobinScheduler(Scheduler):
@@ -83,7 +74,7 @@ class RoundRobinScheduler(Scheduler):
         context : Context object
             Context to schedule
         """
-        Scheduler.schedule(self, context)
+        Scheduler.register_on_context(self, context)
 
         num_tasks = context.num_tasks()
         num_resources = context.num_resources()
@@ -121,7 +112,7 @@ class CompactScheduler(Scheduler):
         context : Context object
             Context to schedule
         """
-        Scheduler.schedule(self, context)
+        Scheduler.register_on_context(self, context)
 
         num_tasks = context.num_tasks()
         num_resources = context.num_resources()
@@ -171,7 +162,8 @@ class ListScheduler(Scheduler):
         context : Context object
             Context to schedule
         """
-        Scheduler.schedule(self, context)
+        Scheduler.register_on_context(self, context)
+
         # Creates a min heap of resources with zero load
         num_resources = context.num_resources()
         resource_heap = HeapFactory.create_unloaded_heap(num_resources, 'min')
@@ -208,7 +200,8 @@ class LPTScheduler(Scheduler):
         context : Context object
             Context to schedule
         """
-        Scheduler.schedule(self, context)
+        Scheduler.register_on_context(self, context)
+
         # Creates a min heap of resources with zero load
         num_resources = context.num_resources()
         resource_heap = HeapFactory.create_unloaded_heap(num_resources, 'min')
@@ -232,12 +225,23 @@ class DistScheduler(Scheduler):
     Base distributed scheduling algorithm class.
     Provides methods for multiple distributed schedulers.
     Extends the Scheduler class.
+
+    Attributes
+    ----------
+    name : string, optional
+        Name of the scheduling algorithm
+    report : bool, optional
+        True if scheduling information should be reported during execution
+    rng_seed : int, optional
+        Random number generator seed
     """
 
-    def __init__(self, report=False, rng_seed=0):
+    def __init__(self, name="DistScheduler", report=False, rng_seed=0,
+                 bundle_size=10):
         """Creates a distributed scheduler with its verbosity"""
-        Scheduler.__init__(self, name="DistScheduler",
+        Scheduler.__init__(self, name=name,
                            report=report, rng_seed=rng_seed)
+        self.bundle_size = bundle_size
 
     def schedule(self, context):
         """
@@ -248,22 +252,22 @@ class DistScheduler(Scheduler):
         context : DistributedContext object
             Context to schedule
         """
-        Scheduler.schedule(self, context)
+        Scheduler.register_on_context(self, context)
 
         # Sets RNG seed before starting to schedule
         random.seed(self.rng_seed)
 
-        print("Before rounds")
         while self.has_converged(context) is False:
             self.prepare_round(context)
             print("Round: " + str(context.round_number))
             tasks = context.round_tasks
             # Iterates while there are tasks in the round to check
-            while len(tasks) is not 0:
-                task_id, task = tasks.popitem(False)
+            for task_id, task in tasks.items():
                 resource_id, resource = self.get_candidate_resource(context)
-                self.check_migration(context, task_id,
-                                     task.mapping, resource_id)
+                decision = self.check_migration(context, task_id,
+                                                task.mapping, resource_id)
+                if decision is True:
+                    self.apply_migration(context, task_id, resource_id)
 
     """
     Simple set of distributed scheduling methods.
@@ -286,7 +290,23 @@ class DistScheduler(Scheduler):
     def basic_migration_check(context, task_id, current_id, candidate_id):
         viability = context.check_viability(current_id, candidate_id)
         if viability is True:
-            context.try_migration(task_id, current_id, candidate_id)
+            return context.check_migration(current_id, candidate_id)
+
+    @staticmethod
+    def apply_single_migration(context, task_id, candidate_id):
+        context.update_mapping(task_id, candidate_id)
+
+    """
+    Simple set of methods for distributed schedulers that organize
+    tasks in bundles (packs)
+    """
+    @staticmethod
+    def basic_bundled_round(context):
+        return context.prepare_round_with_bundles()
+
+    @staticmethod
+    def apply_multiple_migrations(context, bundle_id, candidate_id):
+        context.update_bundle_mapping(bundle_id, candidate_id)
 
 
 class SelfishScheduler(DistScheduler):
@@ -303,9 +323,34 @@ class SelfishScheduler(DistScheduler):
     """
 
     def __init__(self, report=False, rng_seed=0):
-        Scheduler.__init__(self, name="Selfish",
-                           report=report, rng_seed=rng_seed)
+        DistScheduler.__init__(self, name="Selfish",
+                               report=report, rng_seed=rng_seed)
         self.has_converged = DistScheduler.basic_convergence_check
         self.prepare_round = DistScheduler.basic_round
         self.get_candidate_resource = DistScheduler.basic_resource_selection
         self.check_migration = DistScheduler.basic_migration_check
+        self.apply_migration = DistScheduler.apply_single_migration
+
+
+class BundledSelfishScheduler(DistScheduler):
+    """
+    Bundled selfish scheduling algorithm.
+
+    Notes
+    -----
+    Basic flow of a round:
+    for each bundle of tasks in parallel
+        choose a new resource at random
+        if the load of the current resource > new resource
+            migrate with a certain probability
+    """
+
+    def __init__(self, report=False, rng_seed=0, bundle_size=10):
+        DistScheduler.__init__(self, name="BundledSelfish",
+                               report=report, rng_seed=rng_seed,
+                               bundle_size=bundle_size)
+        self.has_converged = DistScheduler.basic_convergence_check
+        self.prepare_round = DistScheduler.basic_bundled_round
+        self.get_candidate_resource = DistScheduler.basic_resource_selection
+        self.check_migration = DistScheduler.basic_migration_check
+        self.apply_migration = DistScheduler.apply_multiple_migrations

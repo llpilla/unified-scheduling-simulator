@@ -207,6 +207,8 @@ class Context:
         Random number generator seed
     algorithm_name : string
         Name of scheduling algorithm
+    bundle_size : int or float
+        Size of bundle of tasks for bundled schedulers
     report : bool
         True if scheduling information should be reported during execution
     total_migrations : int
@@ -220,9 +222,11 @@ class Context:
         self.resources = OrderedDict()
         self.rng_seed = 0
         self.algorithm_name = "None"
+        self.bundle_size = 0
         self.report = False
         self.total_migrations = 0
         self.round_migrations = 0
+
 
     def num_tasks(self):
         """Returns the number of tasks in the context"""
@@ -418,18 +422,19 @@ class Context:
                           new=str(new_resource),
                           ))
 
-    def update_bundle_mapping(self, bundle, new_resource):
+    def update_bundle_mapping(self, bundle_id, new_resource):
         """
         Updates the mapping of a task to a resource.
 
         Parameters
         ----------
-        bundle : BundleOfTasks object
-            Group of tasks to migrate
+        bundle_id : int
+            Identifier of the bundle of tasks to migrate
         new_resource : int
             Resource identifier
         """
-        bundle.mapping = new_resource
+        bundle = self.round_tasks[bundle_id]
+        bundle.set_mapping(new_resource)
         # Migrates all tasks in the bundle
         for task_id in bundle.task_ids:
             self.update_mapping(task_id, new_resource)
@@ -465,6 +470,8 @@ class DistributedContext(Context):
         Random number generator seed
     algorithm_name : string
         Name of scheduling algorithm
+    bundle_size : int or float
+        Size of bundle of tasks for bundled schedulers
     report : bool
         True if scheduling information should be reported during execution
     total_migrations : int
@@ -518,6 +525,7 @@ class DistributedContext(Context):
         dist_context.resources = context.resources
         dist_context.rng_seed = context.rng_seed
         dist_context.algorithm_name = context.algorithm_name
+        dist_context.bundle_size = context.bundle_size
         dist_context.report = context.report
         dist_context.total_migrations = context.total_migrations
         dist_context.round_migrations = context.round_migrations
@@ -630,18 +638,21 @@ class DistributedContext(Context):
         candidate_load = self.round_resources[candidate_id].load
         return current_load > candidate_load
 
-    def try_migration(self, task_id, current_id, candidate_id):
+    def check_migration(self, current_id, candidate_id):
         """
         Checks if a task should migrate following a simple test.
 
         Parameters
         ----------
-        task_id : int
-            Task identifier
         current_id : int
             Current resource identifier
         candidate_id : int
             Candidate resource identifier
+
+        Returns
+        -------
+        bool
+            True if the task should migrate
 
         Notes
         -----
@@ -654,6 +665,23 @@ class DistributedContext(Context):
         candidate_load = resources[candidate_id].load
         # Computes the probability
         probability = 1.0 - (candidate_load/current_load)
-        if probability > random.random():
-            # Migration happens
-            self.update_mapping(task_id, candidate_id)
+        return probability > random.random()
+
+    """
+    Methods for bundles of tasks
+
+    """
+    def prepare_round_with_bundles(self):
+        """
+        Prepares the context for a scheduling round.
+
+        A simple round uses a simple copy of the tasks and resources for
+        scheduling decisions.
+        """
+        # Updates round number, migrations and load checks
+        self.round_update()
+        self.round_resources = copy.deepcopy(self.resources)
+        # Creates bundles of tasks only once
+        if self.round_number is 1:
+            self.round_tasks = BundleOfTasks.create_simple_bundles(
+                self.tasks, self.bundle_size, self.num_resources())
