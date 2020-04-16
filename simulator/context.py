@@ -33,6 +33,151 @@ class Task:
         self.mapping = mapping
 
 
+class BundleOfTasks(Task):
+    """
+    Representation of a group of tasks for scheduling.
+
+    Attributes
+    ----------
+    load : int or float
+        Total load of the tasks (sum of loads)
+    mapping : int
+        Mapping of all tasks to resources
+    task_ids : list of int
+        List of tasks in the bundle
+    """
+
+    def __init__(self):
+        """Creates an empty bundle of tasks."""
+        Task.__init__(self)
+        self.task_ids = []
+
+    def set_mapping(self, resource_id):
+        """Sets the mapping of the bundle of tasks."""
+        self.mapping = resource_id
+
+    def add_task(self, task_id, task):
+        """
+        Inserts task in the bundle.
+
+        Parameters
+        ----------
+        task_id : int
+            Identifier of the task
+        task : Task object
+        """
+        self.load += task.load
+        self.task_ids.append(task_id)
+
+    def is_empty(self):
+        """Checks if the bundle has no tasks"""
+        return len(self.task_ids) is 0
+
+    @staticmethod
+    def check_task_loads(tasks, bundle_size):
+        """
+        Checks if all tasks have loads smaller than the bundle limit.
+
+        Parameters
+        ----------
+        tasks : OrderedDict of Task objects
+            Tasks to bundle
+        bundle_size : int or float
+            Load limit of bundles
+
+        Returns
+        -------
+        bool
+            True if all tasks have loads smaller than the limit
+        """
+        for task in tasks.values():
+            if task.load > bundle_size:
+                return False
+        return True
+
+    @staticmethod
+    def create_inverse_mapping(tasks, num_resources):
+        """
+        Creates lists of tasks mapped per resource
+
+        Parameters
+        ----------
+        tasks : OrderedDict of Task objects
+            Tasks to bundle
+        num_resources : int
+            Number of resources
+
+        Returns
+        -------
+        list of list of int
+            List of resources. For each resource, a list of tasks mapped to it.
+        """
+        # Creates empty lists
+        tasks_mapped = []
+        for resource_id in range(num_resources):
+            tasks_mapped.append([])
+        # Fills lists in order
+        for task_id, task in tasks.items():
+            tasks_mapped[task.mapping].append(task_id)
+        return tasks_mapped
+
+    @staticmethod
+    def create_simple_bundles(tasks, bundle_size, num_resources):
+        """
+        Bundles tasks based on their mapping and a bundle size (load limit).
+
+        Parameters
+        ----------
+        tasks : OrderedDict of Task objects
+            Tasks to bundle
+        bundle_size : int or float
+            Load limit of bundles
+        num_resources : int
+            Number of resources
+
+        Returns
+        -------
+        OrderedDict of BundleOfTasks objects
+        """
+        # Checks if tasks are smaller than the load limit of bundles
+        if BundleOfTasks.check_task_loads(tasks, bundle_size) is True:
+            # Creates a list of tasks per resource
+            mappings = BundleOfTasks.create_inverse_mapping(tasks,
+                                                            num_resources)
+            bundles = OrderedDict()
+            bundle_id = 0
+            # Creates bundles of tasks in order
+            # Tasks are inserted in order while they respect the load limit
+            for resource_id in range(num_resources):
+                # Creates bundle
+                bundle = BundleOfTasks()
+                bundle.set_mapping(resource_id)
+
+                # Inserts tasks mapped to the resource
+                for task_id in mappings[resource_id]:
+                    task = tasks[task_id]
+                    # Checks if the task fits into the current bundle
+                    if bundle.load + task.load > bundle_size:
+                        # It does not, so we add the current full bundle
+                        # to the list and start a new one
+                        bundles[bundle_id] = bundle
+                        bundle_id += 1
+                        bundle = BundleOfTasks()
+                        bundle.set_mapping(resource_id)
+                    # Adds task to the bundle
+                    bundle.add_task(task_id, task)
+
+                # Checks if the last bundle of the resource has something
+                if bundle.is_empty() is False:
+                    bundles[bundle_id] = bundle
+                    bundle_id += 1
+
+            return bundles
+        else:
+            print("Could not create bundle of tasks due to their large loads")
+            return None
+
+
 class Resource:
     """
     Representation of a resource for scheduling.
@@ -44,7 +189,7 @@ class Resource:
     """
 
     def __init__(self, load=0):
-        """Creates a resource with an id and a load"""
+        """Creates a resource with an id and a load."""
         self.load = load
 
 
@@ -62,6 +207,8 @@ class Context:
         Random number generator seed
     algorithm_name : string
         Name of scheduling algorithm
+    bundle_size : int or float
+        Size of bundle of tasks for bundled schedulers
     report : bool
         True if scheduling information should be reported during execution
     total_migrations : int
@@ -75,9 +222,11 @@ class Context:
         self.resources = OrderedDict()
         self.rng_seed = 0
         self.algorithm_name = "None"
+        self.bundle_size = 0
         self.report = False
         self.total_migrations = 0
         self.round_migrations = 0
+
 
     def num_tasks(self):
         """Returns the number of tasks in the context"""
@@ -273,6 +422,23 @@ class Context:
                           new=str(new_resource),
                           ))
 
+    def update_bundle_mapping(self, bundle_id, new_resource):
+        """
+        Updates the mapping of a task to a resource.
+
+        Parameters
+        ----------
+        bundle_id : int
+            Identifier of the bundle of tasks to migrate
+        new_resource : int
+            Resource identifier
+        """
+        bundle = self.round_tasks[bundle_id]
+        bundle.set_mapping(new_resource)
+        # Migrates all tasks in the bundle
+        for task_id in bundle.task_ids:
+            self.update_mapping(task_id, new_resource)
+
     def avg_resource_load(self):
         """Computes the average resource load"""
         # Computes total load
@@ -304,6 +470,8 @@ class DistributedContext(Context):
         Random number generator seed
     algorithm_name : string
         Name of scheduling algorithm
+    bundle_size : int or float
+        Size of bundle of tasks for bundled schedulers
     report : bool
         True if scheduling information should be reported during execution
     total_migrations : int
@@ -357,6 +525,7 @@ class DistributedContext(Context):
         dist_context.resources = context.resources
         dist_context.rng_seed = context.rng_seed
         dist_context.algorithm_name = context.algorithm_name
+        dist_context.bundle_size = context.bundle_size
         dist_context.report = context.report
         dist_context.total_migrations = context.total_migrations
         dist_context.round_migrations = context.round_migrations
@@ -469,18 +638,21 @@ class DistributedContext(Context):
         candidate_load = self.round_resources[candidate_id].load
         return current_load > candidate_load
 
-    def try_migration(self, task_id, current_id, candidate_id):
+    def check_migration(self, current_id, candidate_id):
         """
         Checks if a task should migrate following a simple test.
 
         Parameters
         ----------
-        task_id : int
-            Task identifier
         current_id : int
             Current resource identifier
         candidate_id : int
             Candidate resource identifier
+
+        Returns
+        -------
+        bool
+            True if the task should migrate
 
         Notes
         -----
@@ -493,6 +665,23 @@ class DistributedContext(Context):
         candidate_load = resources[candidate_id].load
         # Computes the probability
         probability = 1.0 - (candidate_load/current_load)
-        if probability > random.random():
-            # Migration happens
-            self.update_mapping(task_id, candidate_id)
+        return probability > random.random()
+
+    """
+    Methods for bundles of tasks
+
+    """
+    def prepare_round_with_bundles(self):
+        """
+        Prepares the context for a scheduling round.
+
+        A simple round uses a simple copy of the tasks and resources for
+        scheduling decisions.
+        """
+        # Updates round number, migrations and load checks
+        self.round_update()
+        self.round_resources = copy.deepcopy(self.resources)
+        # Creates bundles of tasks only once
+        if self.round_number is 1:
+            self.round_tasks = BundleOfTasks.create_simple_bundles(
+                self.tasks, self.bundle_size, self.num_resources())
