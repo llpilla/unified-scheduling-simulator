@@ -1,4 +1,0 @@
-algorithm=roundrobin
-tasks_file=csv_input_example/tasks.csv
-pes_file=csv_input_example/pes.csv
-mapping_file=csv_input_example/mapping.csv

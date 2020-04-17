@@ -1,196 +1,109 @@
-# This code has only been tested with Python 3.
 """
-Context module. Contains the representations of tasks and resources for
-scheduling.
-
-Each task has a load, and a mapping.
-Each resource has a load.
-The whole context contains a list of tasks, a list of resources, and some
-scheduling statistics.
+Context module. Groups information about tasks, resources, and scheduling
+statistics.
 """
 
 import csv                      # for handling csv files
-import copy
+import copy                     # for deep copy
 import random
 from collections import OrderedDict
 
+from simulator.tasks import Task, TaskBundle
+from simulator.resources import Resource
+from simulator.logger import Logger
 
-class Task:
+
+class ExperimentInformation:
     """
-    Representation of a task for scheduling.
+    Basic information about an experiment.
 
     Attributes
     ----------
-    load : int or float
-        Load of the task
-    mapping : int
-        Mapping of the task to a resource
+    num_tasks : int
+        Number of tasks
+    num_resources : int
+        Number of resources
+    algorithm : string
+        Scheduling algorithm name
+    rng_seed : int
+        Random number generator seed
+    bundle_load_limit : int or float, optional
+        Size of bundle of tasks for bundled schedulers
+    epsilon : float
+        Accepted divergence from the average resource load for convergence
     """
 
-    def __init__(self, load=0, mapping=0):
-        """Creates a task with a load and a mapping"""
-        self.load = load
-        self.mapping = mapping
+    def __init__(self, num_tasks=0, num_resources=0,
+                 algorithm="None", rng_seed=0,
+                 bundle_load_limit=10, epsilon=1.05):
+        self.num_tasks = num_tasks
+        self.num_resources = num_resources
+        self.algorithm = algorithm
+        self.rng_seed = rng_seed
+        self.bundle_load_limit = bundle_load_limit
+        self.epsilon = epsilon
+
+    def __repr__(self):
+        text = (f'Experiment information ({self.num_tasks},' +
+                f' {self.num_resources}, {self.algorithm},' +
+                f' {self.rng_seed}, {self.bundle_load_limit},' +
+                f' {self.epsilon})')
+        return text
+
+    def __str__(self):
+        # "# tasks:5 resources:3 rng_seed:0 algorithm:None"
+        text = (f'# tasks:{self.num_tasks} resources:{self.num_resources}' +
+                f' rng_seed:{self.rng_seed} algorithm:{self.algorithm}')
+        return text
+
+    def update_from_scheduler(self, new_info):
+        """
+        Updates all information except number of tasks and resources.
+
+        Parameters
+        ----------
+        new_info : ExperimentInformation object
+            Information from the scheduler
+        """
+        self.algorithm = new_info.algorithm
+        self.rng_seed = new_info.rng_seed
+        self.bundle_load_limit = new_info.bundle_load_limit
+        self.epsilon = new_info.epsilon
 
 
-class BundleOfTasks(Task):
+class ExperimentStatus:
     """
-    Representation of a group of tasks for scheduling.
+    Information about the current status of a simulation.
 
     Attributes
     ----------
-    load : int or float
-        Total load of the tasks (sum of loads)
-    mapping : int
-        Mapping of all tasks to resources
-    task_ids : list of int
-        List of tasks in the bundle
+    max_resource_load : int or float
+        Maximum resource load
+    num_overloaded : int
+        Number of overloaded resources
+    num_underloaded : int
+        Number of underloaded resources
+    num_averageloaded : int
+        Number of resources near the average load
     """
 
-    def __init__(self):
-        """Creates an empty bundle of tasks."""
-        Task.__init__(self)
-        self.task_ids = []
+    def __init__(self, max_resource_load=0, num_overloaded=0,
+                 num_underloaded=0, num_averageloaded=0):
+        self.max_resource_load = max_resource_load
+        self.num_overloaded = num_overloaded
+        self.num_underloaded = num_underloaded
+        self.num_averageloaded = num_averageloaded
 
-    def set_mapping(self, resource_id):
-        """Sets the mapping of the bundle of tasks."""
-        self.mapping = resource_id
+    def __repr__(self):
+        text = (f'Experiment status ({self.max_resource_load},' +
+                f' {self.num_overloaded}, {self.num_underloaded}' +
+                f' {self.num_averageloaded})')
+        return text
 
-    def add_task(self, task_id, task):
-        """
-        Inserts task in the bundle.
-
-        Parameters
-        ----------
-        task_id : int
-            Identifier of the task
-        task : Task object
-        """
-        self.load += task.load
-        self.task_ids.append(task_id)
-
-    def is_empty(self):
-        """Checks if the bundle has no tasks"""
-        return len(self.task_ids) is 0
-
-    @staticmethod
-    def check_task_loads(tasks, bundle_size):
-        """
-        Checks if all tasks have loads smaller than the bundle limit.
-
-        Parameters
-        ----------
-        tasks : OrderedDict of Task objects
-            Tasks to bundle
-        bundle_size : int or float
-            Load limit of bundles
-
-        Returns
-        -------
-        bool
-            True if all tasks have loads smaller than the limit
-        """
-        for task in tasks.values():
-            if task.load > bundle_size:
-                return False
-        return True
-
-    @staticmethod
-    def create_inverse_mapping(tasks, num_resources):
-        """
-        Creates lists of tasks mapped per resource
-
-        Parameters
-        ----------
-        tasks : OrderedDict of Task objects
-            Tasks to bundle
-        num_resources : int
-            Number of resources
-
-        Returns
-        -------
-        list of list of int
-            List of resources. For each resource, a list of tasks mapped to it.
-        """
-        # Creates empty lists
-        tasks_mapped = []
-        for resource_id in range(num_resources):
-            tasks_mapped.append([])
-        # Fills lists in order
-        for task_id, task in tasks.items():
-            tasks_mapped[task.mapping].append(task_id)
-        return tasks_mapped
-
-    @staticmethod
-    def create_simple_bundles(tasks, bundle_size, num_resources):
-        """
-        Bundles tasks based on their mapping and a bundle size (load limit).
-
-        Parameters
-        ----------
-        tasks : OrderedDict of Task objects
-            Tasks to bundle
-        bundle_size : int or float
-            Load limit of bundles
-        num_resources : int
-            Number of resources
-
-        Returns
-        -------
-        OrderedDict of BundleOfTasks objects
-        """
-        # Checks if tasks are smaller than the load limit of bundles
-        if BundleOfTasks.check_task_loads(tasks, bundle_size) is True:
-            # Creates a list of tasks per resource
-            mappings = BundleOfTasks.create_inverse_mapping(tasks,
-                                                            num_resources)
-            bundles = OrderedDict()
-            bundle_id = 0
-            # Creates bundles of tasks in order
-            # Tasks are inserted in order while they respect the load limit
-            for resource_id in range(num_resources):
-                # Creates bundle
-                bundle = BundleOfTasks()
-                bundle.set_mapping(resource_id)
-
-                # Inserts tasks mapped to the resource
-                for task_id in mappings[resource_id]:
-                    task = tasks[task_id]
-                    # Checks if the task fits into the current bundle
-                    if bundle.load + task.load > bundle_size:
-                        # It does not, so we add the current full bundle
-                        # to the list and start a new one
-                        bundles[bundle_id] = bundle
-                        bundle_id += 1
-                        bundle = BundleOfTasks()
-                        bundle.set_mapping(resource_id)
-                    # Adds task to the bundle
-                    bundle.add_task(task_id, task)
-
-                # Checks if the last bundle of the resource has something
-                if bundle.is_empty() is False:
-                    bundles[bundle_id] = bundle
-                    bundle_id += 1
-
-            return bundles
-        else:
-            print("Could not create bundle of tasks due to their large loads")
-            return None
-
-
-class Resource:
-    """
-    Representation of a resource for scheduling.
-
-    Attributes
-    ----------
-    load : int or float
-        Load of the resource
-    """
-
-    def __init__(self, load=0):
-        """Creates a resource with an id and a load."""
-        self.load = load
+    def __str__(self):
+        text = (f'{self.max_resource_load},{self.num_overloaded},' +
+                f'{self.num_underloaded},{self.num_averageloaded}')
+        return text
 
 
 class Context:
@@ -199,42 +112,87 @@ class Context:
 
     Attributes
     ----------
-    tasks : OrderedDict of Task
+    tasks : OrderedDict of Task objects
         List of all tasks
-    resources : OrderedDict of Resource
+    resources : OrderedDict of Resource objects
         List of all resources
-    rng_seed : int
-        Random number generator seed
-    algorithm_name : string
-        Name of scheduling algorithm
-    bundle_size : int or float
-        Size of bundle of tasks for bundled schedulers
-    report : bool
-        True if scheduling information should be reported during execution
-    total_migrations : int
-        Total number of tasks migrated
-    round_migrations : int
-        Number of migrations during a round
+    experiment_info : ExperimentInformation object
+        Basic information about the experiment
+    logging : bool
+        True if logging the scheduler execution
+    logger : Logger object
+        Stores the log of execution
     """
     def __init__(self):
-        """Creates an empty scheduling context"""
+        """Creates an empty scheduling context."""
         self.tasks = OrderedDict()
         self.resources = OrderedDict()
-        self.rng_seed = 0
-        self.algorithm_name = "None"
-        self.bundle_size = 0
-        self.report = False
-        self.total_migrations = 0
-        self.round_migrations = 0
+        self.experiment_info = ExperimentInformation()
+        self.logging = False
+        self.logger = None
 
+    """
+    Basic methods: gather information, check, classify
 
+    """
     def num_tasks(self):
-        """Returns the number of tasks in the context"""
-        return len(self.tasks)
+        """Returns the number of tasks in the context."""
+        return self.experiment_info.num_tasks
 
     def num_resources(self):
-        """Returns the number of resources in the context"""
-        return len(self.resources)
+        """Returns the number of resources in the context."""
+        return self.experiment_info.num_resources
+
+    def avg_resource_load(self):
+        """Computes the average resource load"""
+        # Computes total load
+        total_load = 0
+        for resource in self.resources.values():
+            total_load += resource.load
+        avg_load = total_load / self.num_resources()  # Computes the average
+        return avg_load
+
+    def max_resource_load(self):
+        """Computes the maximum resource load"""
+        max_load = 0
+        for resource in self.resources.values():
+            max_load = max(max_load, resource.load)
+        return max_load
+
+    def gather_status(self):
+        """
+        Organizes the current status of the simulation.
+
+        Returns
+        -------
+        ExperimentStatus object
+        """
+        max_resource_load = self.max_resource_load()
+        overloaded, underloaded, averageloaded = self.classify_resources()
+        status = ExperimentStatus(max_resource_load, overloaded,
+                                  underloaded, averageloaded)
+        return status
+
+    def classify_resources(self):
+        """
+        Counts and classifies the resources according to their loads.
+
+        Returns
+        -------
+        int, int, int
+            number of overloaded, underloaded, and average-loaded resources
+        """
+        overloaded = underloaded = averageloaded = 0
+        avg_load = self.avg_resource_load()
+        threshold_load = avg_load * self.experiment_info.epsilon
+        for resource in self.resources.values():
+            if resource.load < avg_load:
+                underloaded += 1
+            elif resource.load <= threshold_load:
+                averageloaded += 1
+            else:
+                overloaded += 1
+        return overloaded, underloaded, averageloaded
 
     def check_consistency(self):
         """
@@ -251,10 +209,15 @@ class Context:
         range, the number of tasks corresponds to the expect value, and that
         no tasks have negative loads.
         """
+        # Checks the number of tasks and resources
         tasks = self.tasks
         num_tasks = self.num_tasks()
+        if num_tasks != self.experiment_info.num_tasks:
+            return False
         resources = self.resources
         num_resources = self.num_resources()
+        if num_resources != self.experiment_info.num_resources:
+            return False
         # Checks the identifiers and loads of tasks
         for task_id, task in tasks.items():
             if task_id >= num_tasks:
@@ -271,8 +234,11 @@ class Context:
         # No issues were found
         return True
 
+    """
+    CSV methods: read and write a context
+    """
     @staticmethod
-    def from_csv(filename="scenario.csv"):
+    def from_csv(filename='scenario.csv'):
         """
         Imports a scheduling context from a CSV file.
 
@@ -307,12 +273,16 @@ class Context:
                 # "# tasks:5 resources:3 rng_seed:0 algorithm:none"
                 first_line = csvfile.readline()
                 # We decompose the line into a dict while ignoring extremities
-                first_info = dict(x.split(":")
-                                  for x in first_line[2:-1].split(" "))
+                first_info = dict(x.split(':')
+                                  for x in first_line[2:-1].split(' '))
                 # and we save each component for use
-                num_resources = int(first_info["resources"])
-                context.rng_seed = int(first_info["rng_seed"])
-                context.algorithm_name = first_info["algorithm"]
+                num_tasks = int(first_info['tasks'])
+                num_resources = int(first_info['resources'])
+                algorithm = first_info['algorithm']
+                rng_seed = int(first_info['rng_seed'])
+                experiment = ExperimentInformation(num_tasks, num_resources,
+                                                   algorithm, rng_seed)
+                context.experiment_info = experiment
 
                 # After that, we read the other lines of the CSV file
                 reader = csv.DictReader(csvfile)
@@ -332,10 +302,10 @@ class Context:
                     context.resources[resource_id].load += task.load
 
         except IOError:
-            print("Error: could not read file "+filename+".")
+            print('Error: could not read file '+filename+'.')
         except KeyError:
-            print("Error: file "+filename+" contains non-standard" +
-                  " formating or incorrect keys.")
+            print('Error: file '+filename+' contains non-standard' +
+                  ' formating or incorrect keys.')
 
         # Checks the context for any inconsistencies
         # If any are found, we generate an empty context
@@ -367,25 +337,86 @@ class Context:
             with open(filename, 'w') as csvfile:
                 # Example of the format of the first line to write
                 # "# tasks:5 resources:3 rng_seed:0 algorithm:none"
-                comment = "# tasks:" + str(self.num_tasks()) + \
-                          " resources:" + str(self.num_resources()) + \
-                          " rng_seed:" + str(self.rng_seed) + \
-                          " algorithm:" + self.algorithm_name + "\n"
-                csvfile.write(comment)
+                csvfile.write(self.experiment_info + '\n')
 
                 # CSV header: "task_id,task_load,task_mapping"
-                csvfile.write("task_id,task_load,task_mapping\n")
+                csvfile.write('task_id,task_load,task_mapping\n')
 
                 # After that, we write each line with a task
                 for identifier, task in self.tasks.items():
-                    line = str(identifier) + "," + \
-                           str(task.load) + "," + \
-                           str(task.mapping) + "\n"
+                    line = (str(identifier) + ',' +
+                            str(task.load) + ',' +
+                            str(task.mapping) + '\n')
                     csvfile.write(line)
 
         except IOError:
-            print("Error: could not read file "+filename+".")
+            print('Error: could not read file '+filename+'.')
 
+    """
+    Log methods: start and stop logging an experiment
+    """
+    def set_verbosity(self, screen_verbosity=1, logging_verbosity=1,
+                      file_prefix='experiment'):
+        """
+        Sets the level of information to be printed and logged during
+        execution. Starts the logging process.
+
+        Parameters
+        ----------
+        screen_verbosity : int, optional (standard = 1)
+            Level of information to be reported during execution
+        logging_verbosity : int, optional (standard = 1)
+            Level of information to be stored during execution
+        file_prefix : string, optional (standard = 'experiment')
+            Prefix for the name of output files (log and stats)
+        Notes
+        -----
+        Verbosity levels:
+        0 - nothing is reported
+        1 - basic statistics are reported (number of tasks & resources, loads)
+        2 - every action is reported
+        """
+        # If we have to log something, we start our logger
+        if screen_verbosity > 0 or logging_verbosity > 0:
+            self.logging = True
+            self.logger = Logger(screen_verbosity,
+                                 logging_verbosity,
+                                 file_prefix)
+            self.log_start()
+
+    def log_start(self):
+        """
+        Starts headers in the logger.
+
+        Notes
+        -----
+        Information that is provided:
+        - number of tasks, number of resources, RNG seed, scheduler's name
+        - maximum resource load
+        - number of resources that are overloaded, underloaded, or near the
+        average load
+        """
+        if self.logging is True:
+            # first batch of information
+            self.logger.register_start(self.experiment_info)
+            # second batch of information
+            experiment_status = self.gather_status()
+            self.logger.register_resource_status(experiment_status)
+
+    def log_finish(self):
+        """
+        Stops logging an experiment.
+        """
+        if self.logging is True:
+            experiment_status = self.gather_status()
+            self.logger.num_round += 1
+            self.logger.register_resource_status(experiment_status)
+            # stops logging
+            self.logger.register_end()
+
+    """
+    Mapping methods: update mapping of tasks in the context
+    """
     def update_mapping(self, task_id, new_resource):
         """
         Updates the mapping of a task to a resource.
@@ -410,19 +441,12 @@ class Context:
             self.resources[current_resource].load -= task.load
             self.resources[new_resource].load += task.load
             task.mapping = new_resource
-            self.total_migrations += 1
-            self.round_migrations += 1
-        # Prints information about the new mapping
-        if self.report is True:
-            print(("- Task {task} (load {load})" +
-                   " migrating from {old} to {new}.")
-                  .format(task=str(task_id),
-                          load=str(task.load),
-                          old=str(current_resource),
-                          new=str(new_resource),
-                          ))
 
-    def update_bundle_mapping(self, bundle_id, new_resource):
+        if self.logging is True:
+            self.logger.register_migration(task_id, task.load,
+                                           current_resource, new_resource)
+
+    def update_mapping_bundled(self, bundle_id, new_resource):
         """
         Updates the mapping of a task to a resource.
 
@@ -439,22 +463,6 @@ class Context:
         for task_id in bundle.task_ids:
             self.update_mapping(task_id, new_resource)
 
-    def avg_resource_load(self):
-        """Computes the average resource load"""
-        # Computes total load
-        total_load = 0
-        for resource in self.resources.values():
-            total_load += resource.load
-        avg_load = total_load / self.num_resources()  # Computes the average
-        return avg_load
-
-    def max_resource_load(self):
-        """Computes the maximum resource load"""
-        max_load = 0
-        for resource in self.resources.values():
-            max_load = max(max_load, resource.load)
-        return max_load
-
 
 class DistributedContext(Context):
     """
@@ -466,45 +474,29 @@ class DistributedContext(Context):
         List of all tasks
     resources : OrderedDict of Resource
         List of all resources
-    rng_seed : int
-        Random number generator seed
-    algorithm_name : string
-        Name of scheduling algorithm
-    bundle_size : int or float
-        Size of bundle of tasks for bundled schedulers
-    report : bool
-        True if scheduling information should be reported during execution
-    total_migrations : int
-        Total number of tasks migrated
-    round_migrations : int
-        Number of migrations during a round
-    round_number : int
-        Number of the round
-    total_load_checks : int
-        Total number of times the load of a resource is checked
-    round_load_checks : int
-        Number of times the load of resources is checked during a round
     round_tasks
         List of tasks for the round
     round_resources
         List of resources for the round
     avg_load : float
         Average resource load
-    epsilon : float
-        Accepted divergence from the average resource load for convergence
+    experiment_info : ExperimentInformation object
+        Basic information about the experiment
+    logging : bool
+        True if logging the scheduler execution
+    logger : Logger object
+        Stores the log of execution
     """
 
     def __init__(self):
         """Creates an empty distributed scheduling context."""
         Context.__init__(self)
-        self.round_number = 0
-        self.total_load_checks = 0
-        self.round_load_checks = 0
         self.round_tasks = []
         self.round_resources = []
+        self.avg_load = 0
 
     @staticmethod
-    def from_context(context, epsilon=1.05):
+    def from_context(context):
         """
         Creates a distributed scheduling context from a basic context.
 
@@ -512,8 +504,6 @@ class DistributedContext(Context):
         ----------
         context : Context object
             Basic scheduling context
-        epsilon : float, optional (standard = 1.05)
-            Accepted divergence from the average resource load for convergence
 
         Returns
         -------
@@ -523,19 +513,15 @@ class DistributedContext(Context):
 
         dist_context.tasks = context.tasks
         dist_context.resources = context.resources
-        dist_context.rng_seed = context.rng_seed
-        dist_context.algorithm_name = context.algorithm_name
-        dist_context.bundle_size = context.bundle_size
-        dist_context.report = context.report
-        dist_context.total_migrations = context.total_migrations
-        dist_context.round_migrations = context.round_migrations
+        dist_context.experiment_info = context.experiment_info
         dist_context.avg_load = dist_context.avg_resource_load()
-        dist_context.epsilon = epsilon
+        dist_context.logging = context.logging
+        dist_context.logger = context.logger
 
         return dist_context
 
     @staticmethod
-    def from_csv(filename="scenario.csv", epsilon=1.05):
+    def from_csv(filename="scenario.csv"):
         """
         Imports a scheduling context from a CSV file.
 
@@ -543,8 +529,6 @@ class DistributedContext(Context):
         ----------
         filename : string
             Name of the CSV file containing the scheduling context.
-        epsilon : float, optional (standard = 1.05)
-            Accepted divergence from the average resource load for convergence
 
         Returns
         -------
@@ -582,15 +566,19 @@ class DistributedContext(Context):
             True if the scheduler has converged, else otherwise
         """
         max_load = self.max_resource_load()
-        convergence = max_load <= (self.avg_load * self.epsilon)
+        threshold_load = self.avg_load * self.experiment_info.epsilon
+        convergence = max_load <= threshold_load
+
+        if self.logging is True:
+            self.logger.register_convergence(convergence, max_load,
+                                             threshold_load)
+
         return convergence
 
-    def round_update(self):
-        """Updates round number, migrations, and load checks"""
-        self.round_number += 1
-        self.round_migrations = 0
-        self.round_load_checks = 0
-
+    """
+    Methods for schedulers: prepare rounds, get resources, check
+    migration viability
+    """
     def prepare_round(self):
         """
         Prepares the context for a scheduling round.
@@ -599,9 +587,15 @@ class DistributedContext(Context):
         scheduling decisions.
         """
         # Updates round number, migrations and load checks
-        self.round_update()
         self.round_tasks = copy.deepcopy(self.tasks)
         self.round_resources = copy.deepcopy(self.resources)
+
+        if self.logging is True:
+            # registers information from last round
+            experiment_status = self.gather_status()
+            self.logger.register_resource_status(experiment_status)
+            # starts new round
+            self.logger.register_new_round()
 
     def get_random_resource(self):
         """
@@ -633,9 +627,13 @@ class DistributedContext(Context):
             True if the load of the candidate resource is smaller than
             the current resource's load.
         """
-        self.round_load_checks += 1  # load of the other resource is checked
         current_load = self.round_resources[current_id].load
         candidate_load = self.round_resources[candidate_id].load
+
+        if self.logging is True:
+            self.logger.register_load_check(current_id, current_load,
+                                            candidate_id, candidate_load)
+
         return current_load > candidate_load
 
     def check_migration(self, current_id, candidate_id):
@@ -667,21 +665,49 @@ class DistributedContext(Context):
         probability = 1.0 - (candidate_load/current_load)
         return probability > random.random()
 
-    """
-    Methods for bundles of tasks
-
-    """
-    def prepare_round_with_bundles(self):
+    def prepare_round_bundled(self):
         """
         Prepares the context for a scheduling round.
 
         A simple round uses a simple copy of the tasks and resources for
         scheduling decisions.
         """
-        # Updates round number, migrations and load checks
-        self.round_update()
         self.round_resources = copy.deepcopy(self.resources)
         # Creates bundles of tasks only once
-        if self.round_number is 1:
-            self.round_tasks = BundleOfTasks.create_simple_bundles(
-                self.tasks, self.bundle_size, self.num_resources())
+        if len(self.round_tasks) is 0:
+            self.round_tasks = TaskBundle.create_simple_bundles(
+                self.tasks, self.experiment_info.bundle_load_limit,
+                self.num_resources())
+
+        if self.logging is True:
+            # registers information from last round
+            experiment_status = self.gather_status()
+            self.logger.register_resource_status(experiment_status)
+            # starts new round
+            self.logger.register_new_round()
+
+    def log_start(self):
+        """
+        Starts headers in the logger.
+
+        Notes
+        -----
+        Information that is provided:
+        - number of tasks, number of resources, RNG seed, scheduler's name
+        - maximum resource load
+        - number of resources that are overloaded, underloaded, or near the
+        average load
+        """
+        if self.logging is True:
+            # first batch of information
+            self.logger.register_start(self.experiment_info)
+
+    def log_finish(self):
+        """
+        Stops logging an experiment.
+        """
+        if self.logging is True:
+            experiment_status = self.gather_status()
+            self.logger.register_resource_status(experiment_status)
+            # stops logging
+            self.logger.register_end()

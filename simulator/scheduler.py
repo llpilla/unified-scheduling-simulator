@@ -5,7 +5,9 @@ Scheduling algorithms receive a context and reschedule tasks.
 """
 
 import random
+
 from simulator.heap import HeapFactory
+from simulator.context import ExperimentInformation
 
 
 class Scheduler:
@@ -14,25 +16,33 @@ class Scheduler:
 
     Attributes
     ----------
-    name : string, optional
-        Name of the scheduling algorithm
-    report : bool, optional
-        True if scheduling information should be reported during execution
-    rng_seed : int, optional
-        Random number generator seed
-    bundle_size : int or float, optional
-        Size of bundle of tasks (in load) for bundled schedulers
+    experiment_info : ExperimentInformation object
+        Basic information about the experiment
+    screen_verbosity : int
+        Level of information to be reported during execution
+    logging_verbosity : int
+        Level of information to be stored during execution
+    file_prefix: string
+        Prefix for the name of output files (log and stats)
     """
 
-    def __init__(self, name="empty-scheduler", report=False,
-                 rng_seed=0, bundle_size=10):
+    def __init__(self,
+                 name='empty-scheduler',
+                 rng_seed=0,
+                 bundle_load_limit=10,
+                 epsilon=1.05,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
         """Creates a scheduler with its name, verbosity, and RNG seed"""
-        self.name = name
-        self.report = report
-        self.rng_seed = rng_seed
-        self.bundle_size = bundle_size
+        self.experiment_info = ExperimentInformation(
+            algorithm=name, rng_seed=rng_seed,
+            bundle_load_limit=bundle_load_limit, epsilon=epsilon)
+        self.screen_verbosity = screen_verbosity
+        self.logging_verbosity = logging_verbosity
+        self.file_prefix = file_prefix
 
-    def register_on_context(self, context):
+    def register_start(self, context):
         """
         Registers information about the scheduling algorithm in the context
 
@@ -41,10 +51,39 @@ class Scheduler:
         context : Context object
             Context to register information
         """
-        context.rng_seed = self.rng_seed
-        context.algorithm_name = self.name
-        context.report = self.report
-        context.bundle_size = self.bundle_size
+        # Updates information in the context
+        context.experiment_info.update_from_scheduler(self.experiment_info)
+        # Passes logging information to the context
+        context.set_verbosity(self.screen_verbosity,
+                              self.logging_verbosity,
+                              self.file_prefix)
+
+    def register_end(self, context):
+        """
+        Registers the end of scheduling in the context
+
+        Parameters
+        ----------
+        context : Context object
+            Context to register information
+        """
+        context.log_finish()
+
+    def schedule(self, context):
+        """
+        Schedules tasks following the internal policy.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to schedule
+        """
+        self.register_start(context)
+        self.run_policy(context)
+        self.register_end(context)
+
+    def run_policy(self, context):
+        pass
 
 
 class RoundRobinScheduler(Scheduler):
@@ -61,11 +100,17 @@ class RoundRobinScheduler(Scheduler):
     from the start.
     """
 
-    def __init__(self, report=False):
+    def __init__(self,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
         """Creates a Round-Robin scheduler with its verbosity"""
-        Scheduler.__init__(self, name="RoundRobin", report=report)
+        Scheduler.__init__(self, name='RoundRobin',
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
 
-    def schedule(self, context):
+    def run_policy(self, context):
         """
         Schedules tasks following a round-robin policy.
 
@@ -74,8 +119,6 @@ class RoundRobinScheduler(Scheduler):
         context : Context object
             Context to schedule
         """
-        Scheduler.register_on_context(self, context)
-
         num_tasks = context.num_tasks()
         num_resources = context.num_resources()
 
@@ -99,11 +142,17 @@ class CompactScheduler(Scheduler):
     Etc.
     """
 
-    def __init__(self, report=False):
+    def __init__(self,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
         """Creates a Compact scheduler with its verbosity"""
-        Scheduler.__init__(self, name="Compact", report=report)
+        Scheduler.__init__(self, name='Compact',
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
 
-    def schedule(self, context):
+    def run_policy(self, context):
         """
         Schedules tasks following a compact policy.
 
@@ -112,8 +161,6 @@ class CompactScheduler(Scheduler):
         context : Context object
             Context to schedule
         """
-        Scheduler.register_on_context(self, context)
-
         num_tasks = context.num_tasks()
         num_resources = context.num_resources()
 
@@ -149,11 +196,17 @@ class ListScheduler(Scheduler):
     and  maps them to the least loaded resources.
     """
 
-    def __init__(self, report=False):
+    def __init__(self,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
         """Creates a List scheduler with its verbosity"""
-        Scheduler.__init__(self, name="ListScheduler", report=report)
+        Scheduler.__init__(self, name='ListScheduler',
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
 
-    def schedule(self, context):
+    def run_policy(self, context):
         """
         Schedules tasks following a list scheduling policy.
 
@@ -162,8 +215,6 @@ class ListScheduler(Scheduler):
         context : Context object
             Context to schedule
         """
-        Scheduler.register_on_context(self, context)
-
         # Creates a min heap of resources with zero load
         num_resources = context.num_resources()
         resource_heap = HeapFactory.create_unloaded_heap(num_resources, 'min')
@@ -187,11 +238,17 @@ class LPTScheduler(Scheduler):
     to the least loaded resources.
     """
 
-    def __init__(self, report=False):
-        """Creates a List scheduler with its verbosity"""
-        Scheduler.__init__(self, name="LPTScheduler", report=report)
+    def __init__(self,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates an LPT scheduler with its verbosity"""
+        Scheduler.__init__(self, name='LPT',
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
 
-    def schedule(self, context):
+    def run_policy(self, context):
         """
         Schedules tasks following a list scheduling policy.
 
@@ -200,8 +257,6 @@ class LPTScheduler(Scheduler):
         context : Context object
             Context to schedule
         """
-        Scheduler.register_on_context(self, context)
-
         # Creates a min heap of resources with zero load
         num_resources = context.num_resources()
         resource_heap = HeapFactory.create_unloaded_heap(num_resources, 'min')
@@ -236,14 +291,38 @@ class DistScheduler(Scheduler):
         Random number generator seed
     """
 
-    def __init__(self, name="DistScheduler", report=False, rng_seed=0,
-                 bundle_size=10):
+    def __init__(self,
+                 name='DistScheduler',
+                 rng_seed=0,
+                 bundle_load_limit=10,
+                 epsilon=1.05,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
         """Creates a distributed scheduler with its verbosity"""
-        Scheduler.__init__(self, name=name,
-                           report=report, rng_seed=rng_seed)
-        self.bundle_size = bundle_size
+        Scheduler.__init__(self, name=name, rng_seed=rng_seed,
+                           bundle_load_limit=bundle_load_limit,
+                           epsilon=epsilon,
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
 
     def schedule(self, context):
+        """
+        Schedules tasks following the internal policy.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to schedule
+        """
+        self.register_start(context)
+        # Sets RNG seed before starting to schedule
+        random.seed(self.experiment_info.rng_seed)
+        self.run_policy(context)
+        self.register_end(context)
+
+    def run_policy(self, context):
         """
         Schedules tasks following a distributed scheduling algorithm.
 
@@ -252,14 +331,8 @@ class DistScheduler(Scheduler):
         context : DistributedContext object
             Context to schedule
         """
-        Scheduler.register_on_context(self, context)
-
-        # Sets RNG seed before starting to schedule
-        random.seed(self.rng_seed)
-
         while self.has_converged(context) is False:
             self.prepare_round(context)
-            print("Round: " + str(context.round_number))
             tasks = context.round_tasks
             # Iterates while there are tasks in the round to check
             for task_id, task in tasks.items():
@@ -301,12 +374,12 @@ class DistScheduler(Scheduler):
     tasks in bundles (packs)
     """
     @staticmethod
-    def basic_bundled_round(context):
-        return context.prepare_round_with_bundles()
+    def basic_round_bundled(context):
+        return context.prepare_round_bundled()
 
     @staticmethod
     def apply_multiple_migrations(context, bundle_id, candidate_id):
-        context.update_bundle_mapping(bundle_id, candidate_id)
+        context.update_mapping_bundled(bundle_id, candidate_id)
 
 
 class SelfishScheduler(DistScheduler):
@@ -322,9 +395,19 @@ class SelfishScheduler(DistScheduler):
             migrate with a certain probability
     """
 
-    def __init__(self, report=False, rng_seed=0):
-        DistScheduler.__init__(self, name="Selfish",
-                               report=report, rng_seed=rng_seed)
+    def __init__(self,
+                 rng_seed=0,
+                 epsilon=1.05,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a Selfish scheduler"""
+        DistScheduler.__init__(self, name='Selfish', rng_seed=rng_seed,
+                               epsilon=epsilon,
+                               screen_verbosity=screen_verbosity,
+                               logging_verbosity=logging_verbosity,
+                               file_prefix=file_prefix)
+        # Defines the methods to be used for scheduling
         self.has_converged = DistScheduler.basic_convergence_check
         self.prepare_round = DistScheduler.basic_round
         self.get_candidate_resource = DistScheduler.basic_resource_selection
@@ -345,12 +428,24 @@ class BundledSelfishScheduler(DistScheduler):
             migrate with a certain probability
     """
 
-    def __init__(self, report=False, rng_seed=0, bundle_size=10):
-        DistScheduler.__init__(self, name="BundledSelfish",
-                               report=report, rng_seed=rng_seed,
-                               bundle_size=bundle_size)
+    def __init__(self,
+                 rng_seed=0,
+                 bundle_load_limit=10,
+                 epsilon=1.05,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a Selfish scheduler with bundled tasks"""
+        DistScheduler.__init__(self, name='BundledSelfish',
+                               rng_seed=rng_seed,
+                               bundle_load_limit=bundle_load_limit,
+                               epsilon=epsilon,
+                               screen_verbosity=screen_verbosity,
+                               logging_verbosity=logging_verbosity,
+                               file_prefix=file_prefix)
+        # Defines the methods to be used for scheduling
         self.has_converged = DistScheduler.basic_convergence_check
-        self.prepare_round = DistScheduler.basic_bundled_round
+        self.prepare_round = DistScheduler.basic_round_bundled
         self.get_candidate_resource = DistScheduler.basic_resource_selection
         self.check_migration = DistScheduler.basic_migration_check
         self.apply_migration = DistScheduler.apply_multiple_migrations
