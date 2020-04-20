@@ -34,7 +34,7 @@ class ExperimentInformation:
     """
 
     def __init__(self, num_tasks=0, num_resources=0,
-                 algorithm="None", rng_seed=0,
+                 algorithm='None', rng_seed=0,
                  bundle_load_limit=10, epsilon=1.05):
         self.num_tasks = num_tasks
         self.num_resources = num_resources
@@ -96,7 +96,7 @@ class ExperimentStatus:
 
     def __repr__(self):
         text = (f'Experiment status ({self.max_resource_load},' +
-                f' {self.num_overloaded}, {self.num_underloaded}' +
+                f' {self.num_overloaded}, {self.num_underloaded},' +
                 f' {self.num_averageloaded})')
         return text
 
@@ -122,6 +122,10 @@ class Context:
         True if logging the scheduler execution
     logger : Logger object
         Stores the log of execution
+    round_tasks
+        List of tasks for the round
+    round_resources
+        List of resources for the round
     """
     def __init__(self):
         """Creates an empty scheduling context."""
@@ -130,6 +134,8 @@ class Context:
         self.experiment_info = ExperimentInformation()
         self.logging = False
         self.logger = None
+        self.round_tasks = []
+        self.round_resources = []
 
     """
     Basic methods: gather information, check, classify
@@ -337,7 +343,7 @@ class Context:
             with open(filename, 'w') as csvfile:
                 # Example of the format of the first line to write
                 # "# tasks:5 resources:3 rng_seed:0 algorithm:none"
-                csvfile.write(self.experiment_info + '\n')
+                csvfile.write(str(self.experiment_info) + '\n')
 
                 # CSV header: "task_id,task_load,task_mapping"
                 csvfile.write('task_id,task_load,task_mapping\n')
@@ -474,10 +480,6 @@ class DistributedContext(Context):
         List of all tasks
     resources : OrderedDict of Resource
         List of all resources
-    round_tasks
-        List of tasks for the round
-    round_resources
-        List of resources for the round
     avg_load : float
         Average resource load
     experiment_info : ExperimentInformation object
@@ -486,13 +488,15 @@ class DistributedContext(Context):
         True if logging the scheduler execution
     logger : Logger object
         Stores the log of execution
+    round_tasks
+        List of tasks for the round
+    round_resources
+        List of resources for the round
     """
 
     def __init__(self):
         """Creates an empty distributed scheduling context."""
         Context.__init__(self)
-        self.round_tasks = []
-        self.round_resources = []
         self.avg_load = 0
 
     @staticmethod
