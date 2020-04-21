@@ -3,6 +3,7 @@
 import unittest
 import sys
 import os
+import random
 import filecmp
 from collections import OrderedDict
 # Add the parent directory to the path so we can import
@@ -12,6 +13,7 @@ sys.path.append('../')
 from simulator.context import ExperimentInformation   # noqa
 from simulator.context import ExperimentStatus   # noqa
 from simulator.context import Context  # noqa
+from simulator.context import DistributedContext  # noqa
 from simulator.tasks import Task, TaskBundle  # noqa
 from simulator.resources import Resource  # noqa
 
@@ -85,6 +87,8 @@ class ContextTest(unittest.TestCase):
         self.assertEqual(self.context.tasks[0].load, 1)
         self.assertEqual(len(self.context.resources), 3)
         self.assertEqual(self.context.resources[0].load, 4)
+        self.assertEqual(len(self.context.round_tasks), 0)
+        self.assertEqual(len(self.context.round_resources), 0)
 
         info = self.context.experiment_info
         self.assertEqual(info.num_tasks, 5)
@@ -175,6 +179,102 @@ class ContextTest(unittest.TestCase):
         self.assertEqual(self.context.tasks[0].mapping, 1)
         self.assertEqual(self.context.tasks[4].mapping, 1)
         self.assertEqual(self.context.resources[1].load, 11.0)
+
+
+class DistributedContextTest(unittest.TestCase):
+    def setUp(self):
+        self.context = DistributedContext.from_csv(
+            'test_inputs/01234_input.csv')
+
+    def test_attributes(self):
+        self.assertEqual(len(self.context.tasks), 5)
+        self.assertEqual(self.context.tasks[0].load, 1)
+        self.assertEqual(len(self.context.resources), 3)
+        self.assertEqual(self.context.resources[0].load, 4)
+        self.assertEqual(len(self.context.round_tasks), 0)
+        self.assertEqual(len(self.context.round_resources), 0)
+        self.assertEqual(self.context.avg_load, 5.0)
+
+        info = self.context.experiment_info
+        self.assertEqual(info.num_tasks, 5)
+        self.assertEqual(info.num_resources, 3)
+        self.assertEqual(info.algorithm, 'none')
+        self.assertEqual(info.rng_seed, 0)
+        self.assertEqual(info.bundle_load_limit, 10)
+        self.assertEqual(info.epsilon, 1.05)
+
+        self.assertFalse(self.context.logging)
+        self.assertEqual(self.context.logger, None)
+
+    def test_convergence(self):
+        self.assertFalse(self.context.has_converged())
+        self.context.update_mapping(0, 0)
+        self.context.update_mapping(3, 2)
+        self.assertTrue(self.context.has_converged())
+
+    def test_prepare_round(self):
+        self.context.prepare_round()
+        round_tasks = self.context.round_tasks
+        self.assertEqual(len(round_tasks), 5)
+        self.assertEqual(round_tasks[0].load, 1.0)
+        self.assertEqual(round_tasks[0].mapping, 2)
+        round_resources = self.context.round_resources
+        self.assertEqual(len(round_resources), 3)
+        self.assertEqual(round_resources[0].load, 4.0)
+
+    def test_get_random_resource(self):
+        self.context.prepare_round()
+        random.seed(5)
+        resource_id, resource = self.context.get_random_resource()
+        self.assertEqual(resource_id, 2)
+        self.assertEqual(resource.load, 3.0)
+        random.seed(0)
+        resource_id, resource = self.context.get_random_resource()
+        self.assertEqual(resource_id, 1)
+        self.assertEqual(resource.load, 8.0)
+
+    def test_check_viability(self):
+        self.context.prepare_round()
+        self.assertFalse(self.context.check_viability(2, 1))
+        self.assertTrue(self.context.check_viability(1, 2))
+
+    def test_check_migration(self):
+        self.context.prepare_round()
+        random.seed(5)
+        self.assertTrue(self.context.check_migration(1, 2))
+        random.seed(0)
+        self.assertFalse(self.context.check_migration(1, 2))
+
+    def test_prepare_round_bundled(self):
+        self.context.experiment_info.bundle_load_limit = 6
+        self.context.prepare_round_bundled()
+        bundles = self.context.round_tasks
+        self.assertEqual(len(bundles), 4)
+
+        bundle = bundles[0]
+        self.assertEqual(len(bundle.task_ids), 1)
+        self.assertEqual(bundle.load, 4.0)
+        self.assertEqual(bundle.mapping, 0)
+        self.assertEqual(bundle.task_ids[0], 2)
+
+        bundle = bundles[1]
+        self.assertEqual(len(bundle.task_ids), 1)
+        self.assertEqual(bundle.load, 5.0)
+        self.assertEqual(bundle.mapping, 1)
+        self.assertEqual(bundle.task_ids[0], 1)
+
+        bundle = bundles[2]
+        self.assertEqual(len(bundle.task_ids), 1)
+        self.assertEqual(bundle.load, 3.0)
+        self.assertEqual(bundle.mapping, 1)
+        self.assertEqual(bundle.task_ids[0], 3)
+
+        bundle = bundles[3]
+        self.assertEqual(len(bundle.task_ids), 2)
+        self.assertEqual(bundle.load, 3.0)
+        self.assertEqual(bundle.mapping, 2)
+        self.assertEqual(bundle.task_ids[0], 0)
+        self.assertEqual(bundle.task_ids[1], 4)
 
 
 if __name__ == '__main__':
