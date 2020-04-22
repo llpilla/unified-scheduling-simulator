@@ -25,6 +25,9 @@ class Task:
         self.load = load
         self.mapping = mapping
 
+    def __repr__(self):
+        return f'Task (load: {self.load}, mapping: {self.mapping})'
+
 
 class TaskBundle(Task):
     """
@@ -44,6 +47,10 @@ class TaskBundle(Task):
         """Creates an empty bundle of tasks."""
         Task.__init__(self)
         self.task_ids = []
+
+    def __repr__(self):
+        return (f'Task Bundle (load: {self.load}, mapping: {self.mapping},' +
+                f' tasks: {self.task_ids})')
 
     def set_mapping(self, resource_id):
         """Sets the mapping of the bundle of tasks."""

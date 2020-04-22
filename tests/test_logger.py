@@ -82,7 +82,7 @@ class LoggerTest(unittest.TestCase):
         self.logger.register_end()
         os.remove('test_stats.csv')
 
-        expected_log = ('[0] - Task 1 (load 2) migrating from 3 to 4.\n' +
+        expected_log = ('[0] - Task 1 (load 2) migrating from resource 3 to 4.\n' +
                         '-- End of experiment --\n')
         with open('test_log.txt', 'r') as logfile:
             written_log = logfile.read()
@@ -180,7 +180,7 @@ class LoggerFromContextTest(unittest.TestCase):
         self.context.update_mapping(0, 1)
         self.context.log_finish()
 
-        middle_log = ('[0] - Task 0 (load 1.0) migrating from 2 to 1.\n' +
+        middle_log = ('[0] - Task 0 (load 1.0) migrating from resource 2 to 1.\n' +
                       '[1] -- Status:\n' +
                       '- maximum load is 9.0\n' +
                       '- number of overloaded, underloaded and average' +
