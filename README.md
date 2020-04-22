@@ -79,7 +79,7 @@ The *context* also interacts with a *logger* to register scheduling events and r
 
 We have two kinds of *contexts* available for now.
 
-- The `Context` class is mainly used by centralized schedulers. Besides reading and writing context data (`.to_csv()` and `Context.from_csv()`), it also provides some methods to compute statistics over the resouces (`.avg_resource_load()` and `.max_resource_load()`) and to update the schedule (`.update_mapping()`).
+- The `Context` class is mainly used by centralized schedulers. Besides reading and writing context data (`.to_csv()` and `Context.from_csv()`), it also provides some methods to compute statistics over the resources (`.avg_resource_load()` and `.max_resource_load()`) and to update the schedule (`.update_mapping()`).
 - The `Distributed`
 
 while the `DistributedContext` class is mainly used by distributed schedulers that work in rounds or steps. Besides the usual `Context` methods, it also includes some to help with rounds (`.prepare_round()`) and to interact with the pseudo-random number generator (`.check_migration()`).
