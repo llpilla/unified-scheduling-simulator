@@ -153,9 +153,11 @@ class Context:
         """Computes the average resource load"""
         # Computes total load
         total_load = 0
-        for resource in self.resources.values():
-            total_load += resource.load
-        avg_load = total_load / self.num_resources()  # Computes the average
+        avg_load = 0
+        if self.num_resources() > 0:  # Prevents a division by zero
+            for resource in self.resources.values():
+                total_load += resource.load
+            avg_load = total_load / self.num_resources()  # Computes the average
         return avg_load
 
     def max_resource_load(self):

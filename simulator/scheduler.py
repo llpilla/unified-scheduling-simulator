@@ -86,7 +86,7 @@ class Scheduler:
         pass
 
 
-class RoundRobinScheduler(Scheduler):
+class RoundRobin(Scheduler):
     """
     Round-Robin scheduling algorithm. Inherits from the Scheduler class.
 
@@ -128,7 +128,7 @@ class RoundRobinScheduler(Scheduler):
             context.update_mapping(task_id, resource_id)
 
 
-class CompactScheduler(Scheduler):
+class Compact(Scheduler):
     """
     Compact scheduling algorithm. Inherits from the Scheduler class.
 
@@ -228,7 +228,7 @@ class ListScheduler(Scheduler):
             resource_heap.push(resource_load, resource_id)
 
 
-class LPTScheduler(Scheduler):
+class LPT(Scheduler):
     """
     Largest Processing Time scheduling algorithm. Inherits from Scheduler class
 
@@ -382,7 +382,7 @@ class DistScheduler(Scheduler):
         context.update_mapping_bundled(bundle_id, candidate_id)
 
 
-class SelfishScheduler(DistScheduler):
+class Selfish(DistScheduler):
     """
     Selfish scheduling algorithm.
 
@@ -415,7 +415,7 @@ class SelfishScheduler(DistScheduler):
         self.apply_migration = DistScheduler.apply_single_migration
 
 
-class BundledSelfishScheduler(DistScheduler):
+class BundledSelfish(DistScheduler):
     """
     Bundled selfish scheduling algorithm.
 
