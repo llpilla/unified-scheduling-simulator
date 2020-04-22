@@ -149,7 +149,7 @@ class Logger:
         self.num_migrations += 1
         output = (f'[{self.num_round}] - Task {task_id}' +
                   f' (load {task_load})' +
-                  f' migrating from {from_res} to {to_res}.')
+                  f' migrating from resource {from_res} to {to_res}.')
         self.__handle_string(output, 2)
 
     def register_new_round(self):
