@@ -77,6 +77,33 @@ class RoundRobinTest(unittest.TestCase):
         self.assertEqual(resources[2].load, 4.0)
 
 
+class RandomTest(unittest.TestCase):
+    def setUp(self):
+        self.scheduler = sc.Random(
+            screen_verbosity=0,
+            logging_verbosity=0)
+        self.context = Context.from_csv('test_inputs/01234_input.csv')
+
+    def test_zero_seed(self):
+        self.scheduler.schedule(self.context)
+        self.context.to_csv('experiment.csv')
+        with open('experiment.csv') as result:
+            expected_name = 'test_inputs/expected_random_0.csv'
+            with open(expected_name, 'r') as expected:
+                self.assertEqual(result.read(), expected.read())
+        os.remove('experiment.csv')
+
+    def test_ten_seed(self):
+        self.scheduler.experiment_info.rng_seed = 10
+        self.scheduler.schedule(self.context)
+        self.context.to_csv('experiment.csv')
+        with open('experiment.csv', 'r') as result:
+            expected_name = 'test_inputs/expected_random_10.csv'
+            with open(expected_name, 'r') as expected:
+                self.assertEqual(result.read(), expected.read())
+        os.remove('experiment.csv')
+
+
 class CompactTest(unittest.TestCase):
     def test_scheduler(self):
         scheduler = sc.Compact(0, 0)

@@ -79,6 +79,8 @@ class Scheduler:
             Context to schedule
         """
         self.register_start(context)
+        # Sets RNG seed before starting to schedule
+        random.seed(self.experiment_info.rng_seed)
         self.run_policy(context)
         self.register_end(context)
 
@@ -125,6 +127,44 @@ class RoundRobin(Scheduler):
         # Iterates mapping tasks to resources in order
         for task_id in range(num_tasks):
             resource_id = task_id % num_resources
+            context.update_mapping(task_id, resource_id)
+
+
+class Random(Scheduler):
+    """
+    Random scheduling algorithm. Inherits from the Scheduler class.
+
+    Notes
+    -----
+    The random algorithm chooses resources uniformly at random for each task.
+    """
+
+    def __init__(self,
+                 rng_seed=0,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a Random scheduler with its verbosity"""
+        Scheduler.__init__(self, name='Random',
+                           rng_seed=rng_seed,
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
+
+    def run_policy(self, context):
+        """
+        Schedules tasks following a random policy.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to schedule
+        """
+        num_tasks = context.num_tasks()
+        num_resources = context.num_resources()
+        # Iterates mapping tasks to resources in order
+        for task_id in range(num_tasks):
+            resource_id = random.randrange(num_resources)
             context.update_mapping(task_id, resource_id)
 
 
@@ -306,21 +346,6 @@ class DistScheduler(Scheduler):
                            screen_verbosity=screen_verbosity,
                            logging_verbosity=logging_verbosity,
                            file_prefix=file_prefix)
-
-    def schedule(self, context):
-        """
-        Schedules tasks following the internal policy.
-
-        Parameters
-        ----------
-        context : Context object
-            Context to schedule
-        """
-        self.register_start(context)
-        # Sets RNG seed before starting to schedule
-        random.seed(self.experiment_info.rng_seed)
-        self.run_policy(context)
-        self.register_end(context)
 
     def run_policy(self, context):
         """
