@@ -496,10 +496,10 @@ class Context:
             self.resources[current_resource].load -= task.load
             self.resources[new_resource].load += task.load
             task.mapping = new_resource
-
-        if self.logging is True:
-            self.logger.register_migration(task_id, task.load,
-                                           current_resource, new_resource)
+            # Only logs migrations to different resources
+            if self.logging is True:
+                self.logger.register_migration(task_id, task.load,
+                                               current_resource, new_resource)
 
     def update_mapping_bundled(self, bundle_id, new_resource):
         """
