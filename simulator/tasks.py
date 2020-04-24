@@ -5,6 +5,7 @@ Each task has a load, and a mapping.
 Each bundle of tasks has a series of tasks, a load, and a mapping
 """
 
+import numpy.random as nr
 from collections import OrderedDict
 
 
@@ -176,3 +177,173 @@ class TaskBundle(Task):
         else:
             print('Could not create bundle of tasks due to their large loads')
             return None
+
+
+class LoadGenerator:
+    """Methods to generate lists of loads for tasks."""
+
+    @staticmethod
+    def range(scale=1, size=10, low=1, high=10, step=1):
+        """
+        Returns a list of loads from a range of values.
+
+        Parameters
+        ----------
+        scale : int or float
+            Scale to multiply load values.
+        size : int
+            Number of loads to generate (size of the list).
+        low : int
+            Lower boundary of the load interval.
+        high : int
+            Upper boundary of the load interval.
+        step : int
+            Step for values in the range
+
+        Returns
+        -------
+        list of float or int
+            List of loads of length 'size'
+        """
+        loads = []
+        # Generates enough loads
+        while len(loads) < size:
+            loads.extend(range(low, high, step))
+        # Crops only to the needed loads
+        loads = loads[:size]
+        # Multiplies by the scale factor
+        loads = list(scale * x for x in loads)
+        return loads
+
+    @staticmethod
+    def uniform(scale=1.0, size=10, low=1.0, high=10.0, rng_seed=0,
+                as_int=False):
+        """
+        Returns a list of loads from a uniform distribution.
+
+        Parameters
+        ----------
+        scale : float
+            Scale to multiply load values.
+        size : int
+            Number of loads to generate (size of the list).
+        low : float
+            Lower boundary of the load interval.
+        high : float
+            Upper boundary of the load interval.
+        rng_seed : int
+            Random number generator seed.
+        as_int : bool, optional (standard = False)
+            Flag to inform if the return values should be integers.
+
+        Returns
+        -------
+        list of float or int
+            List of loads of length 'size'
+        """
+        nr.seed(rng_seed)
+        loads = list(scale * nr.uniform(low, high, size))
+        if as_int is True:
+            loads = [int(x) for x in loads]
+        return loads
+
+    @staticmethod
+    def lognormal(scale=1.0, size=10, mean=0.0, sigma=1.0, rng_seed=0,
+                  as_int=False):
+        """
+        Returns a list of loads from a lognormal distribution.
+
+        Parameters
+        ----------
+        scale : float
+            Scale to multiply load values.
+        size : int
+            Number of loads to generate (size of the list).
+        mean : float
+            Mean value of the underlying normal distribution.
+        sigma : float
+            Standard deviation of the underlying normal distribution.
+        rng_seed : int
+            Random number generator seed.
+        as_int : bool, optional (standard = False)
+            Flag to inform if the return values should be integers.
+
+        Returns
+        -------
+        list of float or int
+            List of loads of length 'size'
+        """
+        nr.seed(rng_seed)
+        loads = list(scale * nr.lognormal(mean, sigma, size))
+        if as_int is True:
+            loads = [int(x) for x in loads]
+        return loads
+
+    @staticmethod
+    def normal(scale=1.0, size=10, mean=0.0, sigma=1.0, rng_seed=0,
+               as_int=False):
+        """
+        Returns a list of loads from a normal distribution.
+
+        If any generated value is negative, the whole list of loads is
+        offset so the smallest value becomes equal to one.
+
+        Parameters
+        ----------
+        scale : float
+            Scale to multiply load values.
+        size : int
+            Number of loads to generate (size of the list).
+        mean : float
+            Mean value of the underlying normal distribution.
+        sigma : float
+            Standard deviation of the underlying normal distribution.
+        rng_seed : int
+            Random number generator seed.
+        as_int : bool, optional (standard = False)
+            Flag to inform if the return values should be integers.
+
+        Returns
+        -------
+        list of float or int
+            List of loads of length 'size'
+        """
+        nr.seed(rng_seed)
+        loads = list(nr.normal(mean, sigma, size))
+        # Checks for negative or zero values
+        if min(loads) < 0:
+            # Offsets all loads by the minimum value + 1
+            offset = 1 - min(loads)
+            loads = [x + offset for x in loads]
+        # Scales after fixing negative values
+        loads = [scale * x for x in loads]
+        if as_int is True:
+            loads = [int(x) for x in loads]
+        return loads
+
+    @staticmethod
+    def exponential(scale=1.0, size=10, rng_seed=0, as_int=False):
+        """
+        Returns a list of loads from an exponential distribution.
+
+        Parameters
+        ----------
+        scale : float
+            Scale to multiply load values.
+        size : int
+            Number of loads to generate (size of the list).
+        rng_seed : int
+            Random number generator seed.
+        as_int : bool, optional (standard = False)
+            Flag to inform if the return values should be integers.
+
+        Returns
+        -------
+        list of float or int
+            List of loads of length 'size'
+        """
+        nr.seed(rng_seed)
+        loads = list(nr.exponential(scale, size))
+        if as_int is True:
+            loads = [int(x) for x in loads]
+        return loads

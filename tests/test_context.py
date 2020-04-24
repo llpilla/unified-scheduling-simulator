@@ -14,7 +14,7 @@ from simulator.context import ExperimentInformation   # noqa
 from simulator.context import ExperimentStatus   # noqa
 from simulator.context import Context  # noqa
 from simulator.context import DistributedContext  # noqa
-from simulator.tasks import Task, TaskBundle  # noqa
+from simulator.tasks import Task, TaskBundle, LoadGenerator  # noqa
 from simulator.resources import Resource  # noqa
 
 
@@ -179,6 +179,41 @@ class ContextTest(unittest.TestCase):
         self.assertEqual(self.context.tasks[0].mapping, 1)
         self.assertEqual(self.context.tasks[4].mapping, 1)
         self.assertEqual(self.context.resources[1].load, 11.0)
+
+    def test_from_loads(self):
+        loads = LoadGenerator.range(size=5, low=2, high=10)
+        context = Context.from_loads(loads, 4, 1, 'test')
+
+        tasks = context.tasks
+        self.assertEqual(len(tasks), 5)
+        self.assertEqual(tasks[0].load, 2)
+        self.assertEqual(tasks[0].mapping, 0)
+        self.assertEqual(tasks[1].load, 3)
+        self.assertEqual(tasks[1].mapping, 0)
+        self.assertEqual(tasks[2].load, 4)
+        self.assertEqual(tasks[2].mapping, 0)
+        self.assertEqual(tasks[3].load, 5)
+        self.assertEqual(tasks[3].mapping, 0)
+        self.assertEqual(tasks[4].load, 6)
+        self.assertEqual(tasks[4].mapping, 0)
+
+        resources = context.resources
+        self.assertEqual(len(resources), 4)
+        self.assertEqual(resources[0].load, 20)
+        self.assertEqual(resources[1].load, 0)
+        self.assertEqual(resources[2].load, 0)
+        self.assertEqual(resources[3].load, 0)
+
+        info = context.experiment_info
+        self.assertEqual(info.num_tasks, 5)
+        self.assertEqual(info.num_resources, 4)
+        self.assertEqual(info.algorithm, 'test')
+        self.assertEqual(info.rng_seed, 1)
+
+        context.to_csv()
+        diff = filecmp.cmp('scenario.csv', 'test_inputs/from_loads.csv')
+        self.assertTrue(diff)
+        os.remove('scenario.csv')
 
 
 class DistributedContextTest(unittest.TestCase):
