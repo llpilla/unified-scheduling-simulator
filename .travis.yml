@@ -4,5 +4,8 @@ version: 3.6
 
 sudo: false
 
+install:
+    - pip3 install numpy
+
 script:
     - ./run_all_tests.sh
