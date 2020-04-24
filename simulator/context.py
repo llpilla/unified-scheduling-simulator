@@ -157,7 +157,7 @@ class Context:
         if self.num_resources() > 0:  # Prevents a division by zero
             for resource in self.resources.values():
                 total_load += resource.load
-            avg_load = total_load / self.num_resources()  # Computes the average
+            avg_load = total_load / self.num_resources()  # Computes average
         return avg_load
 
     def max_resource_load(self):
@@ -243,8 +243,55 @@ class Context:
         return True
 
     """
-    CSV methods: read and write a context
+    Creation methods: read and write a context from a CSV file
+    or from a list of task loads
     """
+    @staticmethod
+    def from_loads(task_loads, num_resources=2, rng_seed=0, name='from_loads'):
+        """
+        Creates a scheduling context from a list of task loads and
+        a number of resources.
+
+        All tasks are initially mapped to resource zero.
+
+        Parameters
+        ----------
+        task_loads : list of int or float
+            Loads of tasks.
+        num_resources : int
+            Number of resources in the context.
+        rng_seed : int, optional
+            Random number generator seed used previously.
+        name : string
+            Name of the method used for the creation of the context.
+
+        Returns
+        -------
+        Context object
+            Scheduling context based on the list of loads, or empty context.
+        """
+        context = Context()  # empty context
+        # Starts adding resources to the context
+        for identifier in range(num_resources):
+            context.resources[identifier] = Resource(0)
+        # Starts adding tasks to the context
+        for identifier in range(len(task_loads)):
+            task = Task(task_loads[identifier], 0)
+            context.tasks[identifier] = task
+            # Adds the load of the task to the initial resource
+            context.resources[0].load += task_loads[identifier]
+        # Updates experiment information
+        context.experiment_info.num_tasks = len(task_loads)
+        context.experiment_info.num_resources = num_resources
+        context.experiment_info.rng_seed = rng_seed
+        context.experiment_info.algorithm = name
+
+        # Checks the context for any inconsistencies
+        # If any are found, we generate an empty context
+        if context.check_consistency() is False:
+            context = Context()
+        return context
+
     @staticmethod
     def from_csv(filename='scenario.csv'):
         """
