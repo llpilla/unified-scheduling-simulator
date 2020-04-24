@@ -1,0 +1,7 @@
+# tasks:5 resources:3 rng_seed:0 algorithm:Random
+task_id,task_load,task_mapping
+0,1.0,1
+1,5.0,1
+2,4.0,0
+3,3.0,1
+4,2.0,2

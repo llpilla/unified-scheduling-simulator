@@ -5,6 +5,7 @@ Scheduling algorithms receive a context and reschedule tasks.
 """
 
 import random
+import numpy as np
 
 from simulator.heap import HeapFactory
 from simulator.context import ExperimentInformation
@@ -79,6 +80,8 @@ class Scheduler:
             Context to schedule
         """
         self.register_start(context)
+        # Sets RNG seed before starting to schedule
+        random.seed(self.experiment_info.rng_seed)
         self.run_policy(context)
         self.register_end(context)
 
@@ -126,6 +129,145 @@ class RoundRobin(Scheduler):
         for task_id in range(num_tasks):
             resource_id = task_id % num_resources
             context.update_mapping(task_id, resource_id)
+
+
+class Random(Scheduler):
+    """
+    Random scheduling algorithm. Inherits from the Scheduler class.
+
+    Notes
+    -----
+    The random algorithm chooses resources uniformly at random for each task.
+    """
+
+    def __init__(self,
+                 rng_seed=0,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a Random scheduler with its verbosity"""
+        Scheduler.__init__(self, name='Random',
+                           rng_seed=rng_seed,
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
+
+    def run_policy(self, context):
+        """
+        Schedules tasks following a random policy.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to schedule
+        """
+        num_tasks = context.num_tasks()
+        num_resources = context.num_resources()
+        # Iterates mapping tasks to resources in order
+        for task_id in range(num_tasks):
+            resource_id = random.randrange(num_resources)
+            context.update_mapping(task_id, resource_id)
+
+
+class RandomNormal(Scheduler):
+    """
+    Random scheduling algorithm using a normal distribution.
+    Inherits from the Scheduler class.
+
+    Notes
+    -----
+    The random algorithm chooses resources at random (from a normal
+    distribution) for each task.
+    """
+
+    def __init__(self,
+                 rng_seed=0,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a RandomNormal scheduler with its verbosity"""
+        Scheduler.__init__(self, name='RandomNormal',
+                           rng_seed=rng_seed,
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
+
+    def run_policy(self, context):
+        """
+        Schedules tasks following a random policy.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to schedule
+        """
+        num_tasks = context.num_tasks()
+        num_resources = context.num_resources()
+        # Creates a histogram to find the weights (probability)
+        # of mapping tasks to any resource
+        # - gets 10000 samples
+        samples = [random.gauss(0.0, 1.0) for i in range(10000)]
+        # - constructs a histogram with them
+        limit = max(-min(samples), max(samples))
+        bins = np.linspace(-limit, limit, num_resources + 1)
+        histogram, bins = np.histogram(samples, bins=bins, density=False)
+        # - uses the histogram as weights for random choices
+        mappings = random.choices(list(range(num_resources)),
+                                  weights=histogram,
+                                  k=num_tasks)
+        # Iterates mapping tasks to resources in order
+        for task_id in range(num_tasks):
+            context.update_mapping(task_id, mappings[task_id])
+
+
+class RandomExponential(Scheduler):
+    """
+    Random scheduling algorithm using an exponential distribution.
+    Inherits from the Scheduler class.
+
+    Notes
+    -----
+    The random algorithm chooses resources at random (from an exponential
+    distribution) for each task.
+    """
+
+    def __init__(self,
+                 rng_seed=0,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a RandomExponential scheduler with its verbosity"""
+        Scheduler.__init__(self, name='RandomExponential',
+                           rng_seed=rng_seed,
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
+
+    def run_policy(self, context):
+        """
+        Schedules tasks following a random policy.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to schedule
+        """
+        num_tasks = context.num_tasks()
+        num_resources = context.num_resources()
+        # Creates a histogram to find the weights (probability)
+        # of mapping tasks to any resource
+        # - gets 10000 samples
+        samples = [random.expovariate(1.0) for i in range(10000)]
+        # - constructs a histogram with them
+        bins = np.linspace(0, max(samples), num_resources + 1)
+        histogram, bins = np.histogram(samples, bins=bins, density=False)
+        # - uses the histogram as weights for random choices
+        mappings = random.choices(list(range(num_resources)),
+                                  weights=histogram,
+                                  k=num_tasks)
+        # Iterates mapping tasks to resources in order
+        for task_id in range(num_tasks):
+            context.update_mapping(task_id, mappings[task_id])
 
 
 class Compact(Scheduler):
@@ -306,21 +448,6 @@ class DistScheduler(Scheduler):
                            screen_verbosity=screen_verbosity,
                            logging_verbosity=logging_verbosity,
                            file_prefix=file_prefix)
-
-    def schedule(self, context):
-        """
-        Schedules tasks following the internal policy.
-
-        Parameters
-        ----------
-        context : Context object
-            Context to schedule
-        """
-        self.register_start(context)
-        # Sets RNG seed before starting to schedule
-        random.seed(self.experiment_info.rng_seed)
-        self.run_policy(context)
-        self.register_end(context)
 
     def run_policy(self, context):
         """
