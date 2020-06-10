@@ -257,6 +257,18 @@ class DistributedContextTest(unittest.TestCase):
         self.assertEqual(len(round_resources), 3)
         self.assertEqual(round_resources[0].load, 4.0)
 
+    def test_prepare_avg_load_round(self):
+        self.context.prepare_avg_load_round()
+        round_tasks = self.context.round_tasks
+        self.assertEqual(len(round_tasks), 2)
+        self.assertEqual(round_tasks[1].load, 5.0)
+        self.assertEqual(round_tasks[1].mapping, 1)
+        self.assertEqual(round_tasks[3].load, 3.0)
+        self.assertEqual(round_tasks[3].mapping, 1)
+        round_resources = self.context.round_resources
+        self.assertEqual(len(round_resources), 3)
+        self.assertEqual(round_resources[0].load, 4.0)
+
     def test_get_random_resource(self):
         self.context.prepare_round()
         random.seed(5)

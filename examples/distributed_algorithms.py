@@ -1,5 +1,5 @@
 from simulator.context import DistributedContext
-from simulator.scheduler import Selfish, BundledSelfish
+from simulator.scheduler import Selfish, BundledSelfish, AverageLoad
 
 # First experiment: run with the Selfish scheduler
 context = DistributedContext.from_csv('../input_examples/bundle_example.csv')
@@ -19,3 +19,14 @@ bundled = BundledSelfish(screen_verbosity=0,
                          bundle_load_limit=5)
 bundled.schedule(context)
 context.to_csv('bundled_mapping.csv')
+
+# Third experiment: run with the AverageLoad scheduler
+context = DistributedContext.from_csv('../input_examples/bundle_example.csv')
+avgload = AverageLoad(screen_verbosity=0,
+                      logging_verbosity=1,
+                      file_prefix='avgload',
+                      rng_seed=0)
+avgload.schedule(context)
+context.to_csv('selfish_mapping.csv')
+
+

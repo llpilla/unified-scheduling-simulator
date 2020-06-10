@@ -639,8 +639,40 @@ class DistributedContext(Context):
         A simple round uses a simple copy of the tasks and resources for
         scheduling decisions.
         """
-        # Updates round number, migrations and load checks
-        self.round_tasks = copy.deepcopy(self.tasks)
+        # Sets the tasks for the round as all tasks in the application
+        self.round_tasks = self.tasks
+        # Copies all resources for the round
+        # a copy is needed because the algorithms use old information
+        self.round_resources = copy.deepcopy(self.resources)
+
+        if self.logging is True:
+            # registers information from last round
+            experiment_status = self.gather_status()
+            self.logger.register_resource_status(experiment_status)
+            # starts new round
+            self.logger.register_new_round()
+
+    def prepare_avg_load_round(self):
+        """
+        Prepares the context for a scheduling round using the
+        average load information
+
+        This only copies tasks from overloaded resources to the list of
+        tasks of the round.
+        """
+        # Sets the tasks for the round as the tasks from overloaded
+        # resources
+        self.round_tasks = OrderedDict()
+        threshold_load = self.avg_load * self.experiment_info.epsilon
+        for task_id, task in self.tasks.items():
+            resource_id = task.mapping
+            resource_load = self.resources[resource_id].load
+            if resource_load > threshold_load:
+                # task is in an overloaded resource
+                self.round_tasks[task_id] = task
+
+        # Copies all resources for the round
+        # a copy is needed because the algorithms use old information
         self.round_resources = copy.deepcopy(self.resources)
 
         if self.logging is True:

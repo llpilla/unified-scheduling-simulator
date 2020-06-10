@@ -497,6 +497,13 @@ class DistScheduler(Scheduler):
         context.update_mapping(task_id, candidate_id)
 
     """
+    Methods used by the AverageLoad algorithm
+    """
+    @staticmethod
+    def avg_load_round(context):
+        return context.prepare_avg_load_round()
+
+    """
     Simple set of methods for distributed schedulers that organize
     tasks in bundles (packs)
     """
@@ -537,6 +544,41 @@ class Selfish(DistScheduler):
         # Defines the methods to be used for scheduling
         self.has_converged = DistScheduler.basic_convergence_check
         self.prepare_round = DistScheduler.basic_round
+        self.get_candidate_resource = DistScheduler.basic_resource_selection
+        self.check_migration = DistScheduler.basic_migration_check
+        self.apply_migration = DistScheduler.apply_single_migration
+
+
+class AverageLoad(DistScheduler):
+    """
+    Average load scheduling algorithm.
+    Extends the idea of the selfish scheduler with the information
+    of the average load in the system.
+
+    Notes
+    -----
+    Basic flow of a round:
+    for each task in overloaded resources in parallel
+        choose a new resource at random
+        if the load of the current resource > new resource
+            migrate with a certain probability
+
+    """
+    def __init__(self,
+                 rng_seed=0,
+                 epsilon=1.05,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates an AverageLoad scheduler"""
+        DistScheduler.__init__(self, name='AverageLoad', rng_seed=rng_seed,
+                               epsilon=epsilon,
+                               screen_verbosity=screen_verbosity,
+                               logging_verbosity=logging_verbosity,
+                               file_prefix=file_prefix)
+        # Defines the methods to be used for scheduling
+        self.has_converged = DistScheduler.basic_convergence_check
+        self.prepare_round = DistScheduler.avg_load_round
         self.get_candidate_resource = DistScheduler.basic_resource_selection
         self.check_migration = DistScheduler.basic_migration_check
         self.apply_migration = DistScheduler.apply_single_migration
