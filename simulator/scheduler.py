@@ -549,9 +549,9 @@ class Selfish(DistScheduler):
         self.apply_migration = DistScheduler.apply_single_migration
 
 
-class AverageLoad(DistScheduler):
+class SelfishAL(DistScheduler):
     """
-    Average load scheduling algorithm.
+    Selfish algorithm extended with average load scheduling algorithm.
     Extends the idea of the selfish scheduler with the information
     of the average load in the system.
 
@@ -570,8 +570,8 @@ class AverageLoad(DistScheduler):
                  screen_verbosity=1,
                  logging_verbosity=1,
                  file_prefix='experiment'):
-        """Creates an AverageLoad scheduler"""
-        DistScheduler.__init__(self, name='AverageLoad', rng_seed=rng_seed,
+        """Creates a SelfishAL scheduler"""
+        DistScheduler.__init__(self, name='SelfishAL', rng_seed=rng_seed,
                                epsilon=epsilon,
                                screen_verbosity=screen_verbosity,
                                logging_verbosity=logging_verbosity,

@@ -1,4 +1,4 @@
-# tasks:20 resources:4 rng_seed:10 algorithm:AverageLoad
+# tasks:20 resources:4 rng_seed:10 algorithm:SelfishAL
 task_id,task_load,task_mapping
 0,1.0,3
 1,2.0,3

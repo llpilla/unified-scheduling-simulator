@@ -258,10 +258,10 @@ class SelfishTest(unittest.TestCase):
         os.remove('experiment.csv')
 
 
-class AverageLoadTest(unittest.TestCase):
+class SelfishALTest(unittest.TestCase):
     def setUp(self):
-        self.scheduler = sc.AverageLoad(screen_verbosity=0,
-                                        logging_verbosity=0)
+        self.scheduler = sc.SelfishAL(screen_verbosity=0,
+                                      logging_verbosity=0)
         self.context = DistributedContext.from_csv(
             'test_inputs/bundle_input.csv')
 
@@ -269,7 +269,7 @@ class AverageLoadTest(unittest.TestCase):
         self.scheduler.schedule(self.context)
         self.context.to_csv('experiment.csv')
         with open('experiment.csv') as result:
-            expected_name = 'test_inputs/expected_averageload_0.csv'
+            expected_name = 'test_inputs/expected_selfish_al_0.csv'
             with open(expected_name, 'r') as expected:
                 self.assertEqual(result.read(), expected.read())
         os.remove('experiment.csv')
@@ -279,7 +279,7 @@ class AverageLoadTest(unittest.TestCase):
         self.scheduler.schedule(self.context)
         self.context.to_csv('experiment.csv')
         with open('experiment.csv') as result:
-            expected_name = 'test_inputs/expected_averageload_10.csv'
+            expected_name = 'test_inputs/expected_selfish_al_10.csv'
             with open(expected_name, 'r') as expected:
                 self.assertEqual(result.read(), expected.read())
         os.remove('experiment.csv')
