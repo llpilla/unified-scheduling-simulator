@@ -540,7 +540,10 @@ class DistributedContext(Context):
     round_tasks
         List of tasks for the round
     round_resources
-        List of resources for the round
+        State of all resources for the round
+    round_targets
+        List of resources that are candidates to receive tasks
+        during the round
     """
 
     def __init__(self):
@@ -566,6 +569,7 @@ class DistributedContext(Context):
 
         dist_context.tasks = context.tasks
         dist_context.resources = context.resources
+        dist_context.round_targets = dist_context.round_resources
         dist_context.experiment_info = context.experiment_info
         dist_context.avg_load = dist_context.avg_resource_load()
         dist_context.logging = context.logging
@@ -632,6 +636,57 @@ class DistributedContext(Context):
     Methods for schedulers: prepare rounds, get resources, check
     migration viability
     """
+    def log_round(self):
+        """
+        Handles the logging part of a round preparation.
+        """
+        if self.logging is True:
+            # registers information from last round
+            experiment_status = self.gather_status()
+            self.logger.register_resource_status(experiment_status)
+            # starts new round
+            self.logger.register_new_round()
+
+    def set_tasks_from_overloaded_resources_for_round(self):
+        """
+        Sets the tasks for the round as the tasks from overloaded
+        resources only.
+        """
+        # resets the list of tasks for the round
+        self.round_tasks = OrderedDict()
+        # defines the threshold to say a resource is overloaded
+        threshold_load = self.avg_load * self.experiment_info.epsilon
+        for task_id, task in self.tasks.items():
+            resource_id = task.mapping
+            resource_load = self.resources[resource_id].load
+            if resource_load > threshold_load:
+                # task is in an overloaded resource
+                self.round_tasks[task_id] = task
+
+    def set_bundle_of_tasks_once_for_round(self):
+        """
+        Sets the tasks for the round as a set of bundles of tasks.
+        These bundles are set only once on the first round.
+        """
+        # Creates bundles of tasks only once
+        if len(self.round_tasks) is 0:
+            self.round_tasks = TaskBundle.create_simple_bundles(
+                self.tasks, self.experiment_info.bundle_load_limit,
+                self.num_resources())
+
+    def set_underloaded_resources_for_round(self):
+        """
+        Sets the resources for the round as the resources that are
+        currently underloaded.
+        """
+        # resets the list of resources for the round
+        self.round_targets = OrderedDict()
+        for resource_id, resource in self.resources.items():
+            # Adds the resource to the list if it is underloaded
+            load = resource.load
+            if resource.load < self.avg_load:
+                self.round_targets[resource_id] = Resource(load)
+
     def prepare_round(self):
         """
         Prepares the context for a scheduling round.
@@ -639,18 +694,14 @@ class DistributedContext(Context):
         A simple round uses a simple copy of the tasks and resources for
         scheduling decisions.
         """
-        # Sets the tasks for the round as all tasks in the application
+        # Sets all tasks for the round
         self.round_tasks = self.tasks
         # Copies all resources for the round
         # a copy is needed because the algorithms use old information
         self.round_resources = copy.deepcopy(self.resources)
-
-        if self.logging is True:
-            # registers information from last round
-            experiment_status = self.gather_status()
-            self.logger.register_resource_status(experiment_status)
-            # starts new round
-            self.logger.register_new_round()
+        self.round_targets = self.round_resources
+        # Handle round logging
+        self.log_round()
 
     def prepare_avg_load_round(self):
         """
@@ -662,25 +713,47 @@ class DistributedContext(Context):
         """
         # Sets the tasks for the round as the tasks from overloaded
         # resources
-        self.round_tasks = OrderedDict()
-        threshold_load = self.avg_load * self.experiment_info.epsilon
-        for task_id, task in self.tasks.items():
-            resource_id = task.mapping
-            resource_load = self.resources[resource_id].load
-            if resource_load > threshold_load:
-                # task is in an overloaded resource
-                self.round_tasks[task_id] = task
-
+        self.set_tasks_from_overloaded_resources_for_round()
         # Copies all resources for the round
         # a copy is needed because the algorithms use old information
         self.round_resources = copy.deepcopy(self.resources)
+        self.round_targets = self.round_resources
+        # Handle round logging
+        self.log_round()
 
-        if self.logging is True:
-            # registers information from last round
-            experiment_status = self.gather_status()
-            self.logger.register_resource_status(experiment_status)
-            # starts new round
-            self.logger.register_new_round()
+    def prepare_over_under_round(self):
+        """
+        Prepares the context for a scheduling round using the
+        average load information
+
+        This only copies tasks from overloaded resources to the list of
+        tasks of the round.
+        """
+        # Sets the tasks for the round as the tasks from overloaded
+        # resources
+        self.set_tasks_from_overloaded_resources_for_round()
+        # Sets the resources for the round as the resources that are
+        # currently underloaded.
+        self.round_resources = copy.deepcopy(self.resources)
+        self.set_underloaded_resources_for_round()
+        # Handle round logging
+        self.log_round()
+
+    def prepare_round_bundled(self):
+        """
+        Prepares the context for a scheduling round.
+
+        A simple round uses a simple copy of the tasks and resources for
+        scheduling decisions.
+        """
+        # Sets the bundle of tasks to be used during the round
+        self.set_bundle_of_tasks_once_for_round()
+        # Copies all resources for the round
+        # a copy is needed because the algorithms use old information
+        self.round_resources = copy.deepcopy(self.resources)
+        self.round_targets = self.round_resources
+        # Handle round logging
+        self.log_round()
 
     def get_random_resource(self):
         """
@@ -690,7 +763,7 @@ class DistributedContext(Context):
         -------
         resource_id, Resource object
         """
-        resources = self.round_resources
+        resources = self.round_targets
         # Picks a resource from the list at random
         resource_id, resource = random.choice(list(resources.items()))
         return resource_id, resource
@@ -749,27 +822,6 @@ class DistributedContext(Context):
         # Computes the probability
         probability = 1.0 - (candidate_load/current_load)
         return probability > random.random()
-
-    def prepare_round_bundled(self):
-        """
-        Prepares the context for a scheduling round.
-
-        A simple round uses a simple copy of the tasks and resources for
-        scheduling decisions.
-        """
-        self.round_resources = copy.deepcopy(self.resources)
-        # Creates bundles of tasks only once
-        if len(self.round_tasks) is 0:
-            self.round_tasks = TaskBundle.create_simple_bundles(
-                self.tasks, self.experiment_info.bundle_load_limit,
-                self.num_resources())
-
-        if self.logging is True:
-            # registers information from last round
-            experiment_status = self.gather_status()
-            self.logger.register_resource_status(experiment_status)
-            # starts new round
-            self.logger.register_new_round()
 
     def log_start(self):
         """

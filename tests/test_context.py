@@ -253,9 +253,14 @@ class DistributedContextTest(unittest.TestCase):
         self.assertEqual(len(round_tasks), 5)
         self.assertEqual(round_tasks[0].load, 1.0)
         self.assertEqual(round_tasks[0].mapping, 2)
+
         round_resources = self.context.round_resources
         self.assertEqual(len(round_resources), 3)
         self.assertEqual(round_resources[0].load, 4.0)
+
+        round_targets = self.context.round_targets
+        self.assertEqual(len(round_targets), 3)
+        self.assertEqual(round_targets[0].load, 4.0)
 
     def test_prepare_avg_load_round(self):
         self.context.prepare_avg_load_round()
@@ -265,32 +270,31 @@ class DistributedContextTest(unittest.TestCase):
         self.assertEqual(round_tasks[1].mapping, 1)
         self.assertEqual(round_tasks[3].load, 3.0)
         self.assertEqual(round_tasks[3].mapping, 1)
+
         round_resources = self.context.round_resources
         self.assertEqual(len(round_resources), 3)
         self.assertEqual(round_resources[0].load, 4.0)
 
-    def test_get_random_resource(self):
-        self.context.prepare_round()
-        random.seed(5)
-        resource_id, resource = self.context.get_random_resource()
-        self.assertEqual(resource_id, 2)
-        self.assertEqual(resource.load, 3.0)
-        random.seed(0)
-        resource_id, resource = self.context.get_random_resource()
-        self.assertEqual(resource_id, 1)
-        self.assertEqual(resource.load, 8.0)
+        round_targets = self.context.round_targets
+        self.assertEqual(len(round_targets), 3)
+        self.assertEqual(round_targets[0].load, 4.0)
 
-    def test_check_viability(self):
-        self.context.prepare_round()
-        self.assertFalse(self.context.check_viability(2, 1))
-        self.assertTrue(self.context.check_viability(1, 2))
+    def test_prepare_over_under_round(self):
+        self.context.prepare_over_under_round()
+        round_tasks = self.context.round_tasks
+        self.assertEqual(len(round_tasks), 2)
+        self.assertEqual(round_tasks[1].load, 5.0)
+        self.assertEqual(round_tasks[1].mapping, 1)
+        self.assertEqual(round_tasks[3].load, 3.0)
+        self.assertEqual(round_tasks[3].mapping, 1)
 
-    def test_check_migration(self):
-        self.context.prepare_round()
-        random.seed(5)
-        self.assertTrue(self.context.check_migration(1, 2))
-        random.seed(0)
-        self.assertFalse(self.context.check_migration(1, 2))
+        round_resources = self.context.round_resources
+        self.assertEqual(len(round_resources), 3)
+        self.assertEqual(round_resources[0].load, 4.0)
+
+        round_targets = self.context.round_targets
+        self.assertEqual(len(round_targets), 2)
+        self.assertEqual(round_targets[0].load, 4.0)
 
     def test_prepare_round_bundled(self):
         self.context.experiment_info.bundle_load_limit = 6
@@ -322,6 +326,36 @@ class DistributedContextTest(unittest.TestCase):
         self.assertEqual(bundle.mapping, 2)
         self.assertEqual(bundle.task_ids[0], 0)
         self.assertEqual(bundle.task_ids[1], 4)
+
+        round_resources = self.context.round_resources
+        self.assertEqual(len(round_resources), 3)
+        self.assertEqual(round_resources[0].load, 4.0)
+        round_targets = self.context.round_targets
+        self.assertEqual(len(round_targets), 3)
+        self.assertEqual(round_targets[0].load, 4.0)
+
+    def test_get_random_resource(self):
+        self.context.prepare_round()
+        random.seed(5)
+        resource_id, resource = self.context.get_random_resource()
+        self.assertEqual(resource_id, 2)
+        self.assertEqual(resource.load, 3.0)
+        random.seed(0)
+        resource_id, resource = self.context.get_random_resource()
+        self.assertEqual(resource_id, 1)
+        self.assertEqual(resource.load, 8.0)
+
+    def test_check_viability(self):
+        self.context.prepare_round()
+        self.assertFalse(self.context.check_viability(2, 1))
+        self.assertTrue(self.context.check_viability(1, 2))
+
+    def test_check_migration(self):
+        self.context.prepare_round()
+        random.seed(5)
+        self.assertTrue(self.context.check_migration(1, 2))
+        random.seed(0)
+        self.assertFalse(self.context.check_migration(1, 2))
 
 
 if __name__ == '__main__':
