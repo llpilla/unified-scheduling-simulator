@@ -632,6 +632,23 @@ class DistributedContext(Context):
 
         return convergence
 
+    def is_resource_underloaded(self, resource_id):
+        """
+        Checks if a resource is under the average load.
+
+        Parameters
+        ----------
+        resource_id: int
+            Identifier of a resource
+
+        Returns
+        -------
+        bool
+            True if the resource's load is under the average
+        """
+        resource = self.resources[resource_id]
+        return resource.load < self.avg_load
+
     """
     Methods for schedulers: prepare rounds, get resources, check
     migration viability

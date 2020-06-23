@@ -247,6 +247,11 @@ class DistributedContextTest(unittest.TestCase):
         self.context.update_mapping(3, 2)
         self.assertTrue(self.context.has_converged())
 
+    def test_is_resource_underloaded(self):
+        self.assertTrue(self.context.is_resource_underloaded(0))
+        self.assertFalse(self.context.is_resource_underloaded(1))
+        self.assertTrue(self.context.is_resource_underloaded(2))
+
     def test_prepare_round(self):
         self.context.prepare_round()
         round_tasks = self.context.round_tasks
@@ -283,7 +288,7 @@ class DistributedContextTest(unittest.TestCase):
         self.assertEqual(len(round_targets), 3)
         self.assertEqual(round_targets[0].load, 4.0)
 
-    def test_prepare_over_under_round(self):
+    def test_prepare_round_with_limited_resources(self):
         epsilon = self.context.experiment_info.epsilon
         avg_load = self.context.avg_load
         threshold = avg_load * epsilon

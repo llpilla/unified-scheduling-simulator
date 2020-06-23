@@ -285,6 +285,87 @@ class SelfishALTest(unittest.TestCase):
         os.remove('experiment.csv')
 
 
+class SelfishAL_fromavgTest(unittest.TestCase):
+    def setUp(self):
+        self.scheduler = sc.SelfishAL_fromavg(screen_verbosity=0,
+                                              logging_verbosity=0)
+        self.context = DistributedContext.from_csv(
+            'test_inputs/bundle_input.csv')
+
+    def test_zero_seed(self):
+        self.scheduler.schedule(self.context)
+        self.context.to_csv('experiment.csv')
+        with open('experiment.csv') as result:
+            expected_name = 'test_inputs/expected_selfish_al_from_0.csv'
+            with open(expected_name, 'r') as expected:
+                self.assertEqual(result.read(), expected.read())
+        os.remove('experiment.csv')
+
+    def test_ten_seed(self):
+        self.scheduler.experiment_info.rng_seed = 10
+        self.scheduler.schedule(self.context)
+        self.context.to_csv('experiment.csv')
+        with open('experiment.csv') as result:
+            expected_name = 'test_inputs/expected_selfish_al_from_10.csv'
+            with open(expected_name, 'r') as expected:
+                self.assertEqual(result.read(), expected.read())
+        os.remove('experiment.csv')
+
+
+class SelfishAL_tounderTest(unittest.TestCase):
+    def setUp(self):
+        self.scheduler = sc.SelfishAL_tounder(screen_verbosity=0,
+                                              logging_verbosity=0)
+        self.context = DistributedContext.from_csv(
+            'test_inputs/bundle_input.csv')
+
+    def test_zero_seed(self):
+        self.scheduler.schedule(self.context)
+        self.context.to_csv('experiment.csv')
+        with open('experiment.csv') as result:
+            expected_name = 'test_inputs/expected_selfish_al_to_0.csv'
+            with open(expected_name, 'r') as expected:
+                self.assertEqual(result.read(), expected.read())
+        os.remove('experiment.csv')
+
+    def test_ten_seed(self):
+        self.scheduler.experiment_info.rng_seed = 10
+        self.scheduler.schedule(self.context)
+        self.context.to_csv('experiment.csv')
+        with open('experiment.csv') as result:
+            expected_name = 'test_inputs/expected_selfish_al_to_10.csv'
+            with open(expected_name, 'r') as expected:
+                self.assertEqual(result.read(), expected.read())
+        os.remove('experiment.csv')
+
+
+class SelfishAL_fromavg_tounderTest(unittest.TestCase):
+    def setUp(self):
+        self.scheduler = sc.SelfishAL_fromavg_tounder(screen_verbosity=0,
+                                                      logging_verbosity=0)
+        self.context = DistributedContext.from_csv(
+            'test_inputs/bundle_input.csv')
+
+    def test_zero_seed(self):
+        self.scheduler.schedule(self.context)
+        self.context.to_csv('experiment.csv')
+        with open('experiment.csv') as result:
+            expected_name = 'test_inputs/expected_selfish_al_from_to_0.csv'
+            with open(expected_name, 'r') as expected:
+                self.assertEqual(result.read(), expected.read())
+        os.remove('experiment.csv')
+
+    def test_ten_seed(self):
+        self.scheduler.experiment_info.rng_seed = 10
+        self.scheduler.schedule(self.context)
+        self.context.to_csv('experiment.csv')
+        with open('experiment.csv') as result:
+            expected_name = 'test_inputs/expected_selfish_al_from_to_10.csv'
+            with open(expected_name, 'r') as expected:
+                self.assertEqual(result.read(), expected.read())
+        os.remove('experiment.csv')
+
+
 class SelfishOUTest(unittest.TestCase):
     def setUp(self):
         self.scheduler = sc.SelfishOU(screen_verbosity=0,
