@@ -647,19 +647,22 @@ class DistributedContext(Context):
             # starts new round
             self.logger.register_new_round()
 
-    def set_tasks_from_overloaded_resources_for_round(self):
+    def set_tasks_with_threshold(self, threshold):
         """
-        Sets the tasks for the round as the tasks from overloaded
-        resources only.
+        Sets the tasks for the round as the tasks from resources that
+        surpass a threshold.
+
+        Parameters
+        ----------
+        threshold : float
+            Load that a resource must surpass to add tasks to the round
         """
         # resets the list of tasks for the round
         self.round_tasks = OrderedDict()
-        # defines the threshold to say a resource is overloaded
-        threshold_load = self.avg_load * self.experiment_info.epsilon
         for task_id, task in self.tasks.items():
             resource_id = task.mapping
             resource_load = self.resources[resource_id].load
-            if resource_load > threshold_load:
+            if resource_load > threshold:
                 # task is in an overloaded resource
                 self.round_tasks[task_id] = task
 
@@ -703,17 +706,19 @@ class DistributedContext(Context):
         # Handle round logging
         self.log_round()
 
-    def prepare_avg_load_round(self):
+    def prepare_round_with_limited_tasks(self, threshold):
         """
-        Prepares the context for a scheduling round using the
-        average load information
+        Prepares the context for a scheduling round using a threshold to
+        define the resources that can have tasks migrated.
 
-        This only copies tasks from overloaded resources to the list of
-        tasks of the round.
+        Parameters
+        ----------
+        threshold : float
+            Load that a resource must surpass to add tasks to the round
         """
-        # Sets the tasks for the round as the tasks from overloaded
-        # resources
-        self.set_tasks_from_overloaded_resources_for_round()
+        # Sets the tasks for the round as the tasks from resources
+        # with a load superior to a threshold
+        self.set_tasks_with_threshold(threshold)
         # Copies all resources for the round
         # a copy is needed because the algorithms use old information
         self.round_resources = copy.deepcopy(self.resources)
@@ -721,17 +726,20 @@ class DistributedContext(Context):
         # Handle round logging
         self.log_round()
 
-    def prepare_over_under_round(self):
+    def prepare_round_with_limited_resources(self, threshold):
         """
-        Prepares the context for a scheduling round using the
-        average load information
+        Prepares the context for a scheduling round using a threshold to
+        define the resources that can have tasks migrated, and adding only
+        underloaded resources as candidates to receive tasks.
 
-        This only copies tasks from overloaded resources to the list of
-        tasks of the round.
+        Parameters
+        ----------
+        threshold : float
+            Load that a resource must surpass to add tasks to the round
         """
-        # Sets the tasks for the round as the tasks from overloaded
-        # resources
-        self.set_tasks_from_overloaded_resources_for_round()
+        # Sets the tasks for the round as the tasks from resources
+        # with a load superior to a threshold
+        self.set_tasks_with_threshold(threshold)
         # Sets the resources for the round as the resources that are
         # currently underloaded.
         self.round_resources = copy.deepcopy(self.resources)

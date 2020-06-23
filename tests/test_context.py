@@ -262,8 +262,12 @@ class DistributedContextTest(unittest.TestCase):
         self.assertEqual(len(round_targets), 3)
         self.assertEqual(round_targets[0].load, 4.0)
 
-    def test_prepare_avg_load_round(self):
-        self.context.prepare_avg_load_round()
+    def test_prepare_round_with_limited_tasks(self):
+        epsilon = self.context.experiment_info.epsilon
+        avg_load = self.context.avg_load
+        threshold = avg_load * epsilon
+
+        self.context.prepare_round_with_limited_tasks(threshold)
         round_tasks = self.context.round_tasks
         self.assertEqual(len(round_tasks), 2)
         self.assertEqual(round_tasks[1].load, 5.0)
@@ -280,7 +284,11 @@ class DistributedContextTest(unittest.TestCase):
         self.assertEqual(round_targets[0].load, 4.0)
 
     def test_prepare_over_under_round(self):
-        self.context.prepare_over_under_round()
+        epsilon = self.context.experiment_info.epsilon
+        avg_load = self.context.avg_load
+        threshold = avg_load * epsilon
+
+        self.context.prepare_round_with_limited_resources(threshold)
         round_tasks = self.context.round_tasks
         self.assertEqual(len(round_tasks), 2)
         self.assertEqual(round_tasks[1].load, 5.0)

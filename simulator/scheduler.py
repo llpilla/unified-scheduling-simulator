@@ -472,7 +472,6 @@ class DistScheduler(Scheduler):
     """
     Simple set of distributed scheduling methods.
     Used by the Selfish algorith.
-
     """
     @staticmethod
     def basic_convergence_check(context):
@@ -497,18 +496,22 @@ class DistScheduler(Scheduler):
         context.update_mapping(task_id, candidate_id)
 
     """
-    Methods used by the SelfishAL algorithm
+    Methods used by the SelfishAL algorithm and its variations
     """
     @staticmethod
-    def avg_load_round(context):
-        return context.prepare_avg_load_round()
+    def only_overloaded_round(context):
+        epsilon = context.experiment_info.epsilon
+        threshold = context.avg_load * epsilon
+        return context.prepare_round_with_limited_tasks(threshold)
 
     """
     Methods used by the SelfishOU algorithm
     """
     @staticmethod
-    def over_under_round(context):
-        return context.prepare_over_under_round()
+    def only_underloaded_resources_round(context):
+        epsilon = context.experiment_info.epsilon
+        threshold = context.avg_load * epsilon
+        return context.prepare_round_with_limited_resources(threshold)
 
     """
     Simple set of methods for distributed schedulers that organize
@@ -556,73 +559,6 @@ class Selfish(DistScheduler):
         self.apply_migration = DistScheduler.apply_single_migration
 
 
-class SelfishAL(DistScheduler):
-    """
-    Selfish algorithm extended with average load scheduling algorithm.
-
-    Notes
-    -----
-    Basic flow of a round:
-    for each task in overloaded resources in parallel
-        choose a new resource at random
-        if the load of the current resource > new resource
-            migrate with a certain probability
-
-    """
-    def __init__(self,
-                 rng_seed=0,
-                 epsilon=1.05,
-                 screen_verbosity=1,
-                 logging_verbosity=1,
-                 file_prefix='experiment'):
-        """Creates a SelfishAL scheduler"""
-        DistScheduler.__init__(self, name='SelfishAL', rng_seed=rng_seed,
-                               epsilon=epsilon,
-                               screen_verbosity=screen_verbosity,
-                               logging_verbosity=logging_verbosity,
-                               file_prefix=file_prefix)
-        # Defines the methods to be used for scheduling
-        self.has_converged = DistScheduler.basic_convergence_check
-        self.prepare_round = DistScheduler.avg_load_round
-        self.get_candidate_resource = DistScheduler.basic_resource_selection
-        self.check_migration = DistScheduler.basic_migration_check
-        self.apply_migration = DistScheduler.apply_single_migration
-
-
-class SelfishOU(DistScheduler):
-    """
-    Selfish algorithm extended with average load scheduling algorithm
-    and the knowledge of which machines are underloaded.
-
-    Notes
-    -----
-    Basic flow of a round:
-    for each task in overloaded resources in parallel
-        choose a new underloaded resource at random
-        if the load of the current resource > new resource
-            migrate with a certain probability
-
-    """
-    def __init__(self,
-                 rng_seed=0,
-                 epsilon=1.05,
-                 screen_verbosity=1,
-                 logging_verbosity=1,
-                 file_prefix='experiment'):
-        """Creates a SelfishOU scheduler"""
-        DistScheduler.__init__(self, name='SelfishOU', rng_seed=rng_seed,
-                               epsilon=epsilon,
-                               screen_verbosity=screen_verbosity,
-                               logging_verbosity=logging_verbosity,
-                               file_prefix=file_prefix)
-        # Defines the methods to be used for scheduling
-        self.has_converged = DistScheduler.basic_convergence_check
-        self.prepare_round = DistScheduler.over_under_round
-        self.get_candidate_resource = DistScheduler.basic_resource_selection
-        self.check_migration = DistScheduler.basic_migration_check
-        self.apply_migration = DistScheduler.apply_single_migration
-
-
 """Bundled Distributed Algorithms"""
 
 
@@ -660,3 +596,75 @@ class BundledSelfish(DistScheduler):
         self.get_candidate_resource = DistScheduler.basic_resource_selection
         self.check_migration = DistScheduler.basic_migration_check
         self.apply_migration = DistScheduler.apply_multiple_migrations
+
+
+"""Variations of the Selfish algorithm"""
+
+
+class SelfishAL(DistScheduler):
+    """
+    Selfish algorithm extended with average load scheduling algorithm.
+
+    Notes
+    -----
+    Basic flow of a round:
+    for each task in overloaded resources in parallel
+        choose a new resource at random
+        if the load of the current resource > new resource
+            migrate with a certain probability
+
+    """
+    def __init__(self,
+                 rng_seed=0,
+                 epsilon=1.05,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a SelfishAL scheduler"""
+        DistScheduler.__init__(self, name='SelfishAL', rng_seed=rng_seed,
+                               epsilon=epsilon,
+                               screen_verbosity=screen_verbosity,
+                               logging_verbosity=logging_verbosity,
+                               file_prefix=file_prefix)
+        # Defines the methods to be used for scheduling
+        self.has_converged = DistScheduler.basic_convergence_check
+        self.prepare_round = DistScheduler.only_overloaded_round
+        self.get_candidate_resource = DistScheduler.basic_resource_selection
+        self.check_migration = DistScheduler.basic_migration_check
+        self.apply_migration = DistScheduler.apply_single_migration
+
+
+class SelfishOU(DistScheduler):
+    """
+    Selfish algorithm extended with average load scheduling algorithm
+    and the knowledge of which machines are underloaded.
+
+    Notes
+    -----
+    Basic flow of a round:
+    for each task in overloaded resources in parallel
+        choose a new underloaded resource at random
+        if the load of the current resource > new resource
+            migrate with a certain probability
+
+    """
+    def __init__(self,
+                 rng_seed=0,
+                 epsilon=1.05,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a SelfishOU scheduler"""
+        DistScheduler.__init__(self, name='SelfishOU', rng_seed=rng_seed,
+                               epsilon=epsilon,
+                               screen_verbosity=screen_verbosity,
+                               logging_verbosity=logging_verbosity,
+                               file_prefix=file_prefix)
+        # Defines the methods to be used for scheduling
+        self.has_converged = DistScheduler.basic_convergence_check
+        self.prepare_round = DistScheduler.only_underloaded_resources_round
+        self.get_candidate_resource = DistScheduler.basic_resource_selection
+        self.check_migration = DistScheduler.basic_migration_check
+        self.apply_migration = DistScheduler.apply_single_migration
+
+
