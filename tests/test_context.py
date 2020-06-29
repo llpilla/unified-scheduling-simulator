@@ -247,10 +247,10 @@ class DistributedContextTest(unittest.TestCase):
         self.context.update_mapping(3, 2)
         self.assertTrue(self.context.has_converged())
 
-    def test_is_resource_underloaded(self):
-        self.assertTrue(self.context.is_resource_underloaded(0))
-        self.assertFalse(self.context.is_resource_underloaded(1))
-        self.assertTrue(self.context.is_resource_underloaded(2))
+    def test_is_resource_under_threshold(self):
+        self.assertTrue(self.context.is_resource_under_threshold(0, 5))
+        self.assertFalse(self.context.is_resource_under_threshold(1, 5))
+        self.assertTrue(self.context.is_resource_under_threshold(2, 5))
 
     def test_prepare_round(self):
         self.context.prepare_round()

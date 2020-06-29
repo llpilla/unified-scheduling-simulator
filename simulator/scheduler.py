@@ -458,9 +458,14 @@ class DistScheduler(Scheduler):
         context : DistributedContext object
             Context to schedule
         """
+        round_limit = 200
+        r = 0
         while self.has_converged(context) is False:
             self.prepare_round(context)
             tasks = context.round_tasks
+            r += 1
+            if r > round_limit:
+                break
             # Iterates while there are tasks in the round to check
             for task_id, task in tasks.items():
                 resource_id, resource = self.get_candidate_resource(context)
@@ -490,32 +495,12 @@ class DistScheduler(Scheduler):
         viability = context.check_viability(current_id, candidate_id)
         if viability is True:
             return context.check_migration(current_id, candidate_id)
+        else:
+            return False
 
     @staticmethod
     def apply_single_migration(context, task_id, candidate_id):
         context.update_mapping(task_id, candidate_id)
-
-    """
-    Methods used by the SelfishAL algorithm and its variations
-    """
-    @staticmethod
-    def only_overloaded_round(context):
-        epsilon = context.experiment_info.epsilon
-        threshold = context.avg_load * epsilon
-        return context.prepare_round_with_limited_tasks(threshold)
-
-    @staticmethod
-    def overloaded_and_averageloaded_round(context):
-        threshold = context.avg_load
-        return context.prepare_round_with_limited_tasks(threshold)
-
-    @staticmethod
-    def underloaded_migration_check(context, task_id, current_id,
-                                    candidate_id):
-        viability = context.check_viability(current_id, candidate_id)
-        underloaded = context.is_resource_underloaded(candidate_id)
-        if viability and underloaded is True:
-            return context.check_migration(current_id, candidate_id)
 
     """
     Methods used by the SelfishOU algorithm
@@ -621,139 +606,108 @@ class SelfishAL(DistScheduler):
     Notes
     -----
     Basic flow of a round:
-    for each task in overloaded resources in parallel
+    for each task in a subset of resources in parallel
         choose a new resource at random
         if the load of the current resource > new resource
+        and the new resource is under a certain load threshold
             migrate with a certain probability
 
+    The first subset of resources is defined by a sender threshold
+    that can be 'sup' (superior), 'avg' (average), or 'inf' (inferior)
+    to the average load.
+    The new resource restrictions consider a threshold for resouces that
+    are 'avg' (average) or 'inf' (inferior) to the average load.
+    The average load is based on the average load of resources multiplied
+    by an epsilon.
     """
     def __init__(self,
                  rng_seed=0,
                  epsilon=1.05,
                  screen_verbosity=1,
                  logging_verbosity=1,
-                 file_prefix='experiment'):
+                 file_prefix='experiment',
+                 sender_subset='sup',
+                 receiver_subset='sup',
+                 name='SelfishAL'):
         """Creates a SelfishAL scheduler"""
-        DistScheduler.__init__(self, name='SelfishAL', rng_seed=rng_seed,
+        DistScheduler.__init__(self, name=name, rng_seed=rng_seed,
                                epsilon=epsilon,
                                screen_verbosity=screen_verbosity,
                                logging_verbosity=logging_verbosity,
                                file_prefix=file_prefix)
+        # Stores the thresholds for senders and receivers
+        self.sender_subset = sender_subset
+        self.receiver_subset = receiver_subset
+        self.check_subsets()
         # Defines the methods to be used for scheduling
         self.has_converged = DistScheduler.basic_convergence_check
-        self.prepare_round = DistScheduler.only_overloaded_round
+        self.prepare_round = self.round_with_threshold
         self.get_candidate_resource = DistScheduler.basic_resource_selection
-        self.check_migration = DistScheduler.basic_migration_check
+        self.check_migration = self.migration_check_with_threshold
         self.apply_migration = DistScheduler.apply_single_migration
 
+    def check_subsets(self):
+        '''
+        Checks if the sender and receiver subsets respect the naming
+        convention.
 
-class SelfishAL_fromavg(DistScheduler):
-    """
-    Selfish algorithm extended with average load scheduling algorithm.
-    Variation that includes tasks from all resources above the average
-    resource load.
+        Raises
+        ------
+        ValueError
+            If the subsets do not match 'sup', 'avg', or 'inf'
+        '''
+        valid_subsets = ['sup', 'avg', 'inf']
+        if self.sender_subset not in valid_subsets:
+            raise ValueError(f'Send subset value ({self.send_subset})' +
+                             f' does not match valid values')
+        if self.receiver_subset not in valid_subsets:
+            raise ValueError(f'Receive subset value ({self.receive_subset})' +
+                             f' does not match valid values')
 
-    Notes
-    -----
-    Basic flow of a round:
-    for each task in overloaded or average-loaded resources in parallel
-        choose a new resource at random
-        if the load of the current resource > new resource
-            migrate with a certain probability
+    def round_with_threshold(self, context):
+        threshold = 0
+        epsilon = context.experiment_info.epsilon
+        avg_load = context.avg_load
 
-    """
-    def __init__(self,
-                 rng_seed=0,
-                 epsilon=1.05,
-                 screen_verbosity=1,
-                 logging_verbosity=1,
-                 file_prefix='experiment'):
-        """Creates a SelfishAL_fromavg scheduler"""
-        DistScheduler.__init__(self, name='SelfishAL_fromavg',
-                               rng_seed=rng_seed,
-                               epsilon=epsilon,
-                               screen_verbosity=screen_verbosity,
-                               logging_verbosity=logging_verbosity,
-                               file_prefix=file_prefix)
-        # Defines the methods to be used for scheduling
-        self.has_converged = DistScheduler.basic_convergence_check
-        self.prepare_round = DistScheduler.overloaded_and_averageloaded_round
-        self.get_candidate_resource = DistScheduler.basic_resource_selection
-        self.check_migration = DistScheduler.basic_migration_check
-        self.apply_migration = DistScheduler.apply_single_migration
+        # Defines the threshold based on the subset of
+        # valid machines
+        if self.sender_subset == 'sup':  # only overloaded
+            threshold = avg_load * epsilon
+        elif self.sender_subset == 'avg':  # overloaded and average-loaded
+            threshold = avg_load
+        else:  # every machine (as the usual Selfish algorithm)
+            threshold = 0
 
+        return context.prepare_round_with_limited_tasks(threshold)
 
-class SelfishAL_fromavg_tounder(DistScheduler):
-    """
-    Selfish algorithm extended with average load scheduling algorithm.
-    Variation that includes tasks from all resources above the average
-    resource load, and only migrates tasks to underloaded resources.
+    def migration_check_with_threshold(self,
+                                       context,
+                                       task_id,
+                                       current_id,
+                                       candidate_id):
+        viability = context.check_viability(current_id, candidate_id)
+        if viability is True:
+            threshold = 0
+            epsilon = context.experiment_info.epsilon
+            avg_load = context.avg_load
 
-    Notes
-    -----
-    Basic flow of a round:
-    for each task in overloaded or average-loaded resources in parallel
-        choose a new resource at random
-        if the load of the current resource > new resource
-        and the new resource is underloaded
-            migrate with a certain probability
-
-    """
-    def __init__(self,
-                 rng_seed=0,
-                 epsilon=1.05,
-                 screen_verbosity=1,
-                 logging_verbosity=1,
-                 file_prefix='experiment'):
-        """Creates a SelfishAL_fromavg_tounder scheduler"""
-        DistScheduler.__init__(self, name='SelfishAL_fromavg_tounder',
-                               rng_seed=rng_seed,
-                               epsilon=epsilon,
-                               screen_verbosity=screen_verbosity,
-                               logging_verbosity=logging_verbosity,
-                               file_prefix=file_prefix)
-        # Defines the methods to be used for scheduling
-        self.has_converged = DistScheduler.basic_convergence_check
-        self.prepare_round = DistScheduler.overloaded_and_averageloaded_round
-        self.get_candidate_resource = DistScheduler.basic_resource_selection
-        self.check_migration = DistScheduler.underloaded_migration_check
-        self.apply_migration = DistScheduler.apply_single_migration
-
-
-class SelfishAL_tounder(DistScheduler):
-    """
-    Selfish algorithm extended with average load scheduling algorithm.
-    Variation that only migrates tasks to underloaded resources.
-
-    Notes
-    -----
-    Basic flow of a round:
-    for each task in overloaded resources in parallel
-        choose a new resource at random
-        if the load of the current resource > new resource
-        and the new resource is underloaded
-            migrate with a certain probability
-
-    """
-    def __init__(self,
-                 rng_seed=0,
-                 epsilon=1.05,
-                 screen_verbosity=1,
-                 logging_verbosity=1,
-                 file_prefix='experiment'):
-        """Creates a SelfishAL_tounder scheduler"""
-        DistScheduler.__init__(self, name='SelfishAL_tounder',
-                               rng_seed=rng_seed,
-                               epsilon=epsilon,
-                               screen_verbosity=screen_verbosity,
-                               logging_verbosity=logging_verbosity,
-                               file_prefix=file_prefix)
-        # Defines the methods to be used for scheduling
-        self.has_converged = DistScheduler.basic_convergence_check
-        self.prepare_round = DistScheduler.only_overloaded_round
-        self.get_candidate_resource = DistScheduler.basic_resource_selection
-        self.check_migration = DistScheduler.underloaded_migration_check
-        self.apply_migration = DistScheduler.apply_single_migration
+            # Defines the threshold based on the subset of
+            # valid machines
+            if self.receiver_subset == 'inf':  # only underloaded
+                threshold = avg_load
+            elif self.receiver_subset == 'avg':  # underloaded and avg-loaded
+                threshold = avg_load * epsilon
+            else:  # standard: all
+                threshold = float('inf')
+            # Checks if the resource is under the set threshold
+            valid = context.is_resource_under_threshold(candidate_id,
+                                                        threshold)
+            if valid is True:
+                return context.check_migration(current_id, candidate_id)
+            else:
+                return False
+        else:
+            return False
 
 
 class SelfishOU(DistScheduler):
