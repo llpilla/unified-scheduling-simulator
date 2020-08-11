@@ -458,11 +458,11 @@ class Refine(Scheduler):
                                      context.max_resource_load())
 
         # Makes a work copy of the original context
-        self.reset_work_context()
+        self.reset_work_context(context)
 
         # Tries to refine the mapping using the original threshold
         # (set in epsilon)
-        done = self.refine(self.epsilon)
+        done = self.refine(self.experiment_info.epsilon)
         # If no mapping that achieves the threshold was found,
         # tries a binary search to find a schedule with a larger threshold
         while done is False:
@@ -472,10 +472,10 @@ class Refine(Scheduler):
                 done = True
                 continue
             # Makes a new copy of the original context
-            self.reset_work_context()
+            self.reset_work_context(context)
             # Define the new threshold
             half_overload = int((self.max_overload + self.min_overload)/2)
-            threshold = self.epsilon + half_overload*0.01
+            threshold = self.experiment_info.epsilon + half_overload*0.01
             # Tries to find a schedule with the new threshold
             improved = self.refine(threshold)
             # If we found a valid schedule, we decrease the maximum overload
@@ -495,14 +495,126 @@ class Refine(Scheduler):
         ----------
         threshold : float
             Acceptable load factor over the average load
+
+        Returns
+        -------
+        bool
+            True if a schedule that respects the threshold was found.
         """
+        # Context being evaluated
+        context = self.work_context
+        success = True
+        # An overloaded resource has a load over the threshold
+        # An underloaded resource had under the average resource load
+        avg_load = context.avg_resource_load()
+        overload = avg_load * threshold
         # Sets resources as overloaded (in a max heap)
         # or underloaded (in a list)
         overloaded_resources = HeapFactory.start_heap('max')
         underloaded_resources = []
-        self.classify_resources(threshold)
+        self.classify_resources(overload,
+                                avg_load,
+                                overloaded_resources,
+                                underloaded_resources)
+        # Organizes lists of tasks per resource
+        tasks_on_resource = self.organize_tasks_per_resource()
+        # Main loop: iterates while there are overloaded resources
+        while len(overloaded_resources) > 0:
+            # Gets the most loaded resource
+            donor_load, donor_id = overloaded_resources.pop()
+            # Resets the variable that define which tasks will migrate
+            # and where it will go
+            highest_task_load = -1
+            best_receiver_id = -1
+            task_to_migrate = -1
+            # Iterates over all underloaded resources
+            # Checking if they can receive any of its tasks
+            # Loops use 'reversed' due to the original set
+            # implementations in RefineLB
+            for receiver_id in reversed(underloaded_resources):
+                receiver_load = context.resources[receiver_id].load
+                for task_id in reversed(tasks_on_resource[donor_id]):
+                    # Checks if the task is bigger than the previous best
+                    # and if it does not make the resource overloaded
+                    task_load = context.tasks[task_id].load
+                    if (task_load > highest_task_load) and \
+                       (task_load + receiver_load < overload):
+                        # Sets this mapping as the one to do for the moment
+                        highest_task_load = task_load
+                        best_receiver_id = receiver_id
+                        task_to_migrate = task_id
+            # Checks if a task to migrate was found
+            if task_to_migrate != -1:
+                # 1. Migrates task to the new resource
+                context.update_mapping(task_to_migrate, best_receiver_id)
+                # 2. Updates the tasks on resources' list
+                tasks_on_resource[donor_id].remove(task_to_migrate)
+                tasks_on_resource[best_receiver_id].append(task_to_migrate)
+                # 3. Checks if the donor is still overloaded
+                # or even became underloaded
+                donor_load = context.resources[donor_id].load
+                if donor_load > overload:
+                    overloaded_resources.push(donor_load, donor_id)
+                elif donor_load < avg_load:
+                    underloaded_resources.append(donor_id)
+                # 4. Checks if the receiver is still underloaded
+                receiver_load = context.resources[best_receiver_id].load
+                if receiver_load > avg_load:
+                    underloaded_resources.remove(best_receiver_id)
+            else:
+                # Did not find a task to migrate, so it will fail to find
+                # a schedule that respects the overload threshold
+                success = False
+                break
+        return success
 
-    def classify_resources(self, threshold)
+    def classify_resources(self,
+                           higher_threshold,
+                           lower_threshold,
+                           overloaded_resources,
+                           underloaded_resources):
+        """
+        Classifies the resources in overloaded and underloaded sets.
+
+        Parameters
+        ----------
+        higher_threshold : float
+            Threshold to set a resource as overloaded
+        lower_threshold : float
+            Threshold to set a resource as underloaded
+        overloaded_resources : MaxHeap
+            Heap of overloaded resources
+        underloaded_resources : list
+            List of underloaded resources
+        """
+        context = self.work_context
+        # Iterates over the resources to classify them
+        for resource_id, resource in context.resources.items():
+            if resource.load < lower_threshold:
+                # Resource is underloaded
+                underloaded_resources.append(resource_id)
+            elif resource.load > higher_threshold:
+                # Resource is overloaded
+                overloaded_resources.push(resource.load, resource_id)
+
+    def organize_tasks_per_resource(self):
+        """
+        Organizes a list of the tasks mapped to each resource.
+
+        Returns
+        -------
+        list of list
+            List of the tasks mapped to each resource
+        """
+        context = self.work_context
+        num_resources = context.num_resources()
+        # Creates the list of lists (each resource has a list of tasks)
+        tasks_on_resource = [[] for i in range(num_resources)]
+        # Iterates over the tasks adding them to the list of their resource
+        for task_id, task in context.tasks.items():
+            resource_id = task.mapping
+            tasks_on_resource[resource_id].append(task_id)
+        return tasks_on_resource
 
     def compute_load_thresholds(self, avg_load, max_load):
         """
@@ -520,7 +632,7 @@ class Refine(Scheduler):
         # Range used for finding an acceptable schedule through binary search
         # The '100' comes from a step of 0.01 for the considered imbalance
         self.min_overload = 0
-        self.max_overload = int(1 + (overload - self.epsilon)*100)
+        self.max_overload = int(1+(overload-self.experiment_info.epsilon)*100)
 
     def reset_work_context(self, context):
         """
@@ -536,13 +648,16 @@ class Refine(Scheduler):
     def copy_solution(self, context):
         """
         Copies the solution in the work context to the output.
-
-        Parameters
-        ----------
-        context : Context object
-            Context to overwrite
         """
-        context = self.work_context
+        num_tasks = context.num_tasks()
+        original_tasks = context.tasks
+        work_tasks = self.work_context.tasks
+        # Checks for all tasks if their mapping changed
+        for task_id in range(num_tasks):
+            if original_tasks[task_id].mapping != work_tasks[task_id].mapping:
+                # Applies the change if there was any
+                context.update_mapping(task_id, work_tasks[task_id].mapping)
+
 
 class DistScheduler(Scheduler):
     """

@@ -10,6 +10,7 @@ sys.path.append('../')
 from simulator.context import Context  # noqa
 from simulator.context import DistributedContext  # noqa
 import simulator.scheduler as sc  # noqa
+from simulator.heap import HeapFactory #noqa
 
 
 class SchedulerTest(unittest.TestCase):
@@ -216,6 +217,131 @@ class LPTTest(unittest.TestCase):
         self.assertEqual(resources[0].load, 5.0)
         self.assertEqual(resources[1].load, 5.0)
         self.assertEqual(resources[2].load, 5.0)
+
+
+class RefineTest(unittest.TestCase):
+    def setUp(self):
+        self.scheduler = sc.Refine(screen_verbosity=0, logging_verbosity=0)
+        self.context = Context.from_csv('test_inputs/01234_input.csv')
+
+    def test_scheduler(self):
+        self.scheduler.schedule(self.context)
+
+        self.assertEqual(self.scheduler.max_overload, 16)
+        self.assertEqual(self.scheduler.min_overload, 15)
+
+        tasks = self.context.tasks
+        self.assertEqual(tasks[0].mapping, 2)
+        self.assertEqual(tasks[1].mapping, 1)
+        self.assertEqual(tasks[2].mapping, 0)
+        self.assertEqual(tasks[3].mapping, 2)
+        self.assertEqual(tasks[4].mapping, 2)
+
+        resources = self.context.resources
+        self.assertEqual(resources[0].load, 4.0)
+        self.assertEqual(resources[1].load, 5.0)
+        self.assertEqual(resources[2].load, 6.0)
+
+    def test_refine(self):
+        self.scheduler.experiment_info.epsilon = 1.4
+        self.scheduler.compute_load_thresholds(5.0, 8.0)
+        self.scheduler.reset_work_context(self.context)
+        success = self.scheduler.refine(1.4)
+        self.assertTrue(success)
+
+        tasks = self.scheduler.work_context.tasks
+        self.assertEqual(tasks[0].mapping, 2)
+        self.assertEqual(tasks[1].mapping, 1)
+        self.assertEqual(tasks[2].mapping, 0)
+        self.assertEqual(tasks[3].mapping, 2)
+        self.assertEqual(tasks[4].mapping, 2)
+
+    def test_refine2(self):
+        self.scheduler.experiment_info.epsilon = 1.2
+        self.scheduler.compute_load_thresholds(5.0, 8.0)
+        self.scheduler.reset_work_context(self.context)
+        success = self.scheduler.refine(1.2)
+        self.assertFalse(success)
+
+        tasks = self.scheduler.work_context.tasks
+        self.assertEqual(tasks[0].mapping, 2)
+        self.assertEqual(tasks[1].mapping, 1)
+        self.assertEqual(tasks[2].mapping, 0)
+        self.assertEqual(tasks[3].mapping, 1)
+        self.assertEqual(tasks[4].mapping, 2)
+
+    def test_classify_resources(self):
+        self.scheduler.reset_work_context(self.context)
+        over = HeapFactory.start_heap('max')
+        under = []
+        self.scheduler.classify_resources(7.0, 3.5, over, under)
+
+        self.assertEqual(len(over), 1)
+        resource_load, resource_id = over.pop()
+        self.assertEqual(resource_id, 1)
+        self.assertEqual(resource_load, 8.0)
+
+        self.assertEqual(len(under), 1)
+        self.assertEqual(under[0], 2)
+
+    def test_organize_tasks_per_resource(self):
+        self.scheduler.reset_work_context(self.context)
+        tasks_on_res = self.scheduler.organize_tasks_per_resource()
+
+        self.assertEqual(tasks_on_res[0][0], 2)
+        self.assertEqual(tasks_on_res[1][0], 1)
+        self.assertEqual(tasks_on_res[1][1], 3)
+        self.assertEqual(tasks_on_res[2][0], 0)
+        self.assertEqual(tasks_on_res[2][1], 4)
+
+    def test_compute_load_thresholds(self):
+        self.scheduler.compute_load_thresholds(10.0, 20.0)
+        self.assertEqual(self.scheduler.min_overload, 0)
+        self.assertEqual(self.scheduler.max_overload, 96)
+
+        self.scheduler.experiment_info.epsilon = 1.1
+        self.scheduler.compute_load_thresholds(10.0, 20.0)
+        self.assertEqual(self.scheduler.min_overload, 0)
+        # One would expect 91, but 2.0 - 1.1 = 0.89999999
+        self.assertEqual(self.scheduler.max_overload, 90)
+
+    def test_reset_work_context(self):
+        self.scheduler.reset_work_context(self.context)
+
+        tasks = self.scheduler.work_context.tasks
+        self.assertEqual(tasks[0].mapping, 2)
+        self.assertEqual(tasks[1].mapping, 1)
+        self.assertEqual(tasks[2].mapping, 0)
+        self.assertEqual(tasks[3].mapping, 1)
+        self.assertEqual(tasks[4].mapping, 2)
+
+        resources = self.scheduler.work_context.resources
+        self.assertEqual(resources[0].load, 4.0)
+        self.assertEqual(resources[1].load, 8.0)
+        self.assertEqual(resources[2].load, 3.0)
+
+    def test_copy_solution(self):
+        self.scheduler.reset_work_context(self.context)
+
+        self.scheduler.work_context.update_mapping(0, 0)
+        self.scheduler.work_context.update_mapping(1, 1)
+        self.scheduler.work_context.update_mapping(2, 2)
+        self.scheduler.work_context.update_mapping(3, 0)
+        self.scheduler.work_context.update_mapping(4, 1)
+
+        self.scheduler.copy_solution(self.context)
+
+        tasks = self.context.tasks
+        self.assertEqual(tasks[0].mapping, 0)
+        self.assertEqual(tasks[1].mapping, 1)
+        self.assertEqual(tasks[2].mapping, 2)
+        self.assertEqual(tasks[3].mapping, 0)
+        self.assertEqual(tasks[4].mapping, 1)
+
+        resources = self.context.resources
+        self.assertEqual(resources[0].load, 4.0)
+        self.assertEqual(resources[1].load, 7.0)
+        self.assertEqual(resources[2].load, 4.0)
 
 
 class DistSchedulerTest(unittest.TestCase):
