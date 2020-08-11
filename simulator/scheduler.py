@@ -6,6 +6,7 @@ Scheduling algorithms receive a context and reschedule tasks.
 
 import random
 import numpy as np
+import copy
 
 from simulator.heap import HeapFactory
 from simulator.context import ExperimentInformation
@@ -416,6 +417,132 @@ class LPT(Scheduler):
             resource_load += task_load
             resource_heap.push(resource_load, resource_id)
 
+
+class Refine(Scheduler):
+    """
+    Refinement-based scheduling algorithm. Inherits from Scheduler class
+
+    Notes
+    -----
+    The Refine policy moves tasks from overloaded to underloaded resources
+    only. Given the most loaded resource, it tries to find the largest task
+    it can migrate without making another resource overloaded.
+    This process is repeated until no processor is seen as overloaded.
+    If no solution is found, the threshold to overloaded resources is updated.
+    This policy is based on the RefineLB algorithm in Charm++
+    """
+
+    def __init__(self,
+                 epsilon=1.05,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a Refine scheduler with its verbosity"""
+        Scheduler.__init__(self, name='Refine',
+                           epsilon=epsilon,
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
+
+    def run_policy(self, context):
+        """
+        Schedules tasks following a refinemenet scheduling policy.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to schedule
+        """
+        # Computes the load objectives of the scheduler
+        self.compute_load_thresholds(context.avg_resource_load(),
+                                     context.max_resource_load())
+
+        # Makes a work copy of the original context
+        self.reset_work_context()
+
+        # Tries to refine the mapping using the original threshold
+        # (set in epsilon)
+        done = self.refine(self.epsilon)
+        # If no mapping that achieves the threshold was found,
+        # tries a binary search to find a schedule with a larger threshold
+        while done is False:
+            # Checks if there is any space for searching left
+            if self.max_overload - self.min_overload <= 1:
+                # Nothing more to find, so the algorithm is done
+                done = True
+                continue
+            # Makes a new copy of the original context
+            self.reset_work_context()
+            # Define the new threshold
+            half_overload = int((self.max_overload + self.min_overload)/2)
+            threshold = self.epsilon + half_overload*0.01
+            # Tries to find a schedule with the new threshold
+            improved = self.refine(threshold)
+            # If we found a valid schedule, we decrease the maximum overload
+            # If not, we increase the minimum overload
+            if improved is True:
+                self.max_overload = half_overload
+            else:
+                self.min_overload = half_overload
+        # Copies the new schedule to the context
+        self.copy_solution(context)
+
+    def refine(self, threshold):
+        """
+        Refines a schedule based on an overload threshold.
+
+        Parameters
+        ----------
+        threshold : float
+            Acceptable load factor over the average load
+        """
+        # Sets resources as overloaded (in a max heap)
+        # or underloaded (in a list)
+        overloaded_resources = HeapFactory.start_heap('max')
+        underloaded_resources = []
+        self.classify_resources(threshold)
+
+    def classify_resources(self, threshold)
+
+    def compute_load_thresholds(self, avg_load, max_load):
+        """
+        Defines the minimum and maximum load threshold for scheduling.
+
+        Parameters
+        ----------
+        avg_load : float
+            Average resource load
+        max_load : float
+            Maximum resouce load
+        """
+        # Current overload in the context
+        overload = max_load/avg_load
+        # Range used for finding an acceptable schedule through binary search
+        # The '100' comes from a step of 0.01 for the considered imbalance
+        self.min_overload = 0
+        self.max_overload = int(1 + (overload - self.epsilon)*100)
+
+    def reset_work_context(self, context):
+        """
+        Makes a copy of original scheduling context.
+
+        Parameters
+        ----------
+        context : Context object
+            Original context to copy
+        """
+        self.work_context = copy.deepcopy(context)
+
+    def copy_solution(self, context):
+        """
+        Copies the solution in the work context to the output.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to overwrite
+        """
+        context = self.work_context
 
 class DistScheduler(Scheduler):
     """
