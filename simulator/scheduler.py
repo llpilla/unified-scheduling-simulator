@@ -4,6 +4,7 @@ Scheduler module. Contains scheduling algorithms.
 Scheduling algorithms receive a context and reschedule tasks.
 """
 
+import sys              # for sys.float_info.max
 import random
 import numpy as np
 import copy
@@ -416,6 +417,237 @@ class LPT(Scheduler):
             context.update_mapping(task_id, resource_id)
             resource_load += task_load
             resource_heap.push(resource_load, resource_id)
+
+
+class ParametrizedLPT(Scheduler):
+    """
+    Largest Processing Time scheduling algorithm with extra parameters.
+    Inherits from Scheduler class
+
+    Notes
+    -----
+    The LPT policy takes tasks in decreasing load order and maps them
+    to the least loaded resources. The parameters influence if the
+    task should end up in its original resource or not.
+    """
+    def __init__(self,
+                 load_objective=0.0,
+                 task_friction=1.0,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """
+        Creates an ParametrizedLPT scheduler with its verbosity
+
+        Parameters
+        ----------
+        load_objective : float
+            Maximum resource load that the algorithm is trying achieve.
+        task_friction : float
+            Factor that influences how more likely a task is to stay
+            in its original resource.
+        """
+        Scheduler.__init__(self, name='ParametrizedLPT',
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
+        self.load_objective = load_objective
+        self.task_friction = task_friction
+
+    def run_policy(self, context):
+        """
+        Schedules tasks following a list scheduling policy with a
+        preference to keeping tasks in their original resources.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to schedule
+        """
+        # Creates a list of resources with zero load
+        num_resources = context.num_resources()
+        res_load = [0 for i in range(num_resources)]
+        # Createa a max heap of tasks
+        num_tasks = context.num_tasks()
+        task_heap = HeapFactory.create_loaded_heap(context.tasks, 'max')
+        # Sets the current resource load objective
+        load_objective = self.load_objective
+        task_friction = self.task_friction
+        # Iterates over tasks
+        # Maps the most loaded task to the least loaded resource
+        # or back to its original resource
+        for i in range(num_tasks):
+            task_load, task_id = task_heap.pop()
+            # Gets information about the (least loaded) candidate resource
+            # and the current resource of the task
+            candidate_id = res_load.index(min(res_load))
+            candidate_load = res_load[candidate_id]
+            source_id = context.tasks[task_id].mapping
+            source_load = res_load[source_id]
+            # Decides if the task should stay or migrate
+            if (source_load <= (candidate_load+0.01)*task_friction) and \
+               (source_load + task_load <= load_objective):
+                # task should stay
+                chosen_resource = source_id
+            else:
+                # task should migrate
+                chosen_resource = candidate_id
+            # Updates task mapping
+            context.update_mapping(task_id, chosen_resource)
+            # Updates resource load information
+            res_load[chosen_resource] += task_load
+            # Updates the load objective if we have surpassed it
+            if res_load[chosen_resource] > load_objective:
+                load_objective = res_load[chosen_resource]
+
+
+class GreedyRefine(Scheduler):
+    """
+    Largest Processing Time-based scheduling algorithm. Inherits from Scheduler
+    class
+
+    Notes
+    -----
+    GreedyRefine is based on a Charm++ code.
+    It uses LPT to find a maximum resource load scheduling objective,
+    and computes several ParametrizedLPT schedules to find the best one that
+    also respects a limit in the number of migrations.
+    """
+
+    # Factor to multiply the makespan found by LPT
+    load_objective_factor_values = [1.0, 1.005, 1.01, 1.015, 1.02, 1.03, 1.04,
+                                    1.05, 1.06, 1.07, 1.08, 1.16, 1.2, 1.3]
+    # Factor that influences how more likely a task is to stay
+    # in its original resource.
+    task_friction_values = [1.0, 1.05, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8,
+                            1.9, 2.0, 2.1, 2.2, 2.3, sys.float_info.max]
+
+    def __init__(self,
+                 number_of_solutions=1,
+                 migration_limit=1.0,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """
+        Creates a GreedyRefine scheduler with its verbosity.
+
+        Parameters
+        ----------
+        number_of_solutions : int (1)
+            Number of ParametrizedLPT solutions to generate
+        migration_limit : float (1.0)
+            Fraction of tasks that can be migrated
+        """
+        Scheduler.__init__(self, name='GreedyRefine',
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
+        self.number_of_solutions = number_of_solutions
+        self.migration_limit = migration_limit
+
+    def run_policy(self, context):
+        """
+        Schedules tasks following the GreedyRefine policy.
+
+        Parameters
+        ----------
+        context : Context object
+            Context to schedule
+        """
+        # Computes a largest processing time schedule to get a
+        # makespan objective
+        lpt_context = copy.deepcopy(context)
+        lpt = LPT(0, 0)
+        lpt.schedule(lpt_context)
+        load_objective = lpt_context.max_resource_load()
+
+        # Computes all the solutions with ParametrizedLPT
+        solutions = []
+        # First solution:
+        # objective = load_objective
+        # task_friction = -1
+        solutions.append(copy.deepcopy(context))
+        scheduler = ParametrizedLPT(load_objective, -1.0, 0, 0)
+        scheduler.schedule(solutions[0])
+
+        # Other solutions:
+        # task_friction comes from task_friction_values
+        # objective is multiplied by load_objective_factor_values
+        # The algorithm tries all task friction values before moving to
+        # the next objective
+        to_compute = min(self.number_of_solutions,
+                         len(self.load_objective_factor_values) *
+                         len(self.task_friction_values))
+        for i in range(1, to_compute):
+            # copy of the context to compute a new solution
+            solutions.append(copy.deepcopy(context))
+            # task friction and load objective factor
+            tf_index = (i-1) % len(self.task_friction_values)
+            task_friction = self.task_friction_values[tf_index]
+            lf_index = int((i-1) / len(self.task_friction_values))
+            load_factor = self.load_objective_factor_values[lf_index]
+            # scheduler with new parameters
+            scheduler.load_objective = load_objective * load_factor
+            scheduler.task_friction = task_friction
+            scheduler.schedule(solutions[i])
+
+        # Tries to find the best solution among the computed ones
+        # 1. Finds the solution with the lowest number of migrations
+        #    for the case where no solution is considered 'feasible'
+        migrations_allowed = context.num_tasks() * self.migration_limit
+        best_migrations = migrations_allowed + 1
+        best_makespan = sys.float_info.max
+        best_feasible_makespan = sys.float_info.max
+        feasible_solutions = False
+        best_solution = -1
+        # Iterates over the solutions
+        for solution in solutions:
+            # Gets the number of migrations and makespan from the solution
+            migrations = solution.num_migrations
+            makespan = solution.max_resource_load()
+            # Checks if the solution is feasible and better than the
+            # previous feasible one
+            if (migrations <= migrations_allowed) and \
+               (makespan < best_feasible_makespan):
+                best_feasible_makespan = makespan
+                feasible_solutions = True
+            # Checks if the solution is the best one found yet
+            # in number of migrations
+            if (migrations < best_migrations) or \
+               ((migrations == best_migrations) and
+               makespan < best_makespan):
+                best_migrations = migrations
+                best_makespan = makespan
+                best_solution = solution
+
+        # 2. If there are feasible solutions, tries to find the one
+        #    with the fewest migrations and a makespan within tolerance
+        if feasible_solutions is True:
+            best_feasible_migrations = migrations_allowed + 1
+            # tradeoff between migrations and reducing the makespan
+            tradeoff_migrations = 1.003
+            # Iterates over the solutions
+            for solution in solutions:
+                # Gets the number of migrations and makespan from the solution
+                migrations = solution.num_migrations
+                makespan = solution.max_resource_load()
+                # Checks if this solution is feasible
+                # and better than the previous one
+                if ((migrations < best_feasible_migrations) and
+                   (makespan <= best_feasible_makespan*tradeoff_migrations)) \
+                   or ((migrations == best_feasible_migrations) and
+                   (makespan < best_makespan)):
+                    best_feasible_migrations = migrations
+                    best_makespan = makespan
+                    best_solution = solution
+
+        # Applies the best schedule
+        # (or the one with the lowest number of migrations)
+        num_tasks = context.num_tasks()
+        migrated_tasks = best_solution.tasks
+        # Checks for all tasks if their mapping changed
+        for task_id in range(num_tasks):
+            context.update_mapping(task_id, migrated_tasks[task_id].mapping)
 
 
 class Refine(Scheduler):

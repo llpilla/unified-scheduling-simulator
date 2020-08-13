@@ -219,6 +219,93 @@ class LPTTest(unittest.TestCase):
         self.assertEqual(resources[2].load, 5.0)
 
 
+class ParametrizedLPTTest(unittest.TestCase):
+    def test_scheduler(self):
+        scheduler = sc.ParametrizedLPT(screen_verbosity=0,
+                                       logging_verbosity=0)
+        self.assertEqual(scheduler.experiment_info.algorithm,
+                         'ParametrizedLPT')
+        context = Context.from_csv('test_inputs/01234_input.csv')
+        scheduler.schedule(context)
+
+        tasks = context.tasks
+        self.assertEqual(tasks[0].mapping, 1)
+        self.assertEqual(tasks[1].mapping, 0)
+        self.assertEqual(tasks[2].mapping, 1)
+        self.assertEqual(tasks[3].mapping, 2)
+        self.assertEqual(tasks[4].mapping, 2)
+
+        resources = context.resources
+        self.assertEqual(resources[0].load, 5.0)
+        self.assertEqual(resources[1].load, 5.0)
+        self.assertEqual(resources[2].load, 5.0)
+
+    def test_scheduler_with_parameters(self):
+        scheduler = sc.ParametrizedLPT(6.0, 1.05,
+                                       screen_verbosity=0,
+                                       logging_verbosity=0)
+        self.assertEqual(scheduler.experiment_info.algorithm,
+                         'ParametrizedLPT')
+        context = Context.from_csv('test_inputs/01234_input.csv')
+        scheduler.schedule(context)
+
+        tasks = context.tasks
+        self.assertEqual(tasks[0].mapping, 0)
+        self.assertEqual(tasks[1].mapping, 1)
+        self.assertEqual(tasks[2].mapping, 0)
+        self.assertEqual(tasks[3].mapping, 2)
+        self.assertEqual(tasks[4].mapping, 2)
+
+        resources = context.resources
+        self.assertEqual(resources[0].load, 5.0)
+        self.assertEqual(resources[1].load, 5.0)
+        self.assertEqual(resources[2].load, 5.0)
+
+    def test_scheduler_with_parameters2(self):
+        scheduler = sc.ParametrizedLPT(10.0, 2.0,
+                                       screen_verbosity=0,
+                                       logging_verbosity=0)
+        self.assertEqual(scheduler.experiment_info.algorithm,
+                         'ParametrizedLPT')
+        context = Context.from_csv('test_inputs/01234_input.csv')
+        scheduler.schedule(context)
+
+        tasks = context.tasks
+        self.assertEqual(tasks[0].mapping, 2)
+        self.assertEqual(tasks[1].mapping, 1)
+        self.assertEqual(tasks[2].mapping, 0)
+        self.assertEqual(tasks[3].mapping, 2)
+        self.assertEqual(tasks[4].mapping, 2)
+
+        resources = context.resources
+        self.assertEqual(resources[0].load, 4.0)
+        self.assertEqual(resources[1].load, 5.0)
+        self.assertEqual(resources[2].load, 6.0)
+
+
+class GreedyRefineTest(unittest.TestCase):
+    def test_scheduler(self):
+        scheduler = sc.GreedyRefine(5, 1.0,
+                                    screen_verbosity=0,
+                                    logging_verbosity=0)
+        self.assertEqual(scheduler.experiment_info.algorithm,
+                         'GreedyRefine')
+        context = Context.from_csv('test_inputs/01234_input.csv')
+        scheduler.schedule(context)
+
+        tasks = context.tasks
+        self.assertEqual(tasks[0].mapping, 0)
+        self.assertEqual(tasks[1].mapping, 1)
+        self.assertEqual(tasks[2].mapping, 0)
+        self.assertEqual(tasks[3].mapping, 2)
+        self.assertEqual(tasks[4].mapping, 2)
+
+        resources = context.resources
+        self.assertEqual(resources[0].load, 5.0)
+        self.assertEqual(resources[1].load, 5.0)
+        self.assertEqual(resources[2].load, 5.0)
+
+
 class RefineTest(unittest.TestCase):
     def setUp(self):
         self.scheduler = sc.Refine(screen_verbosity=0, logging_verbosity=0)

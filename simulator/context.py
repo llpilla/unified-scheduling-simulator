@@ -116,6 +116,8 @@ class Context:
         List of all tasks
     resources : OrderedDict of Resource objects
         List of all resources
+    num_migrations : int
+        Number of tasks migrated in the context
     experiment_info : ExperimentInformation object
         Basic information about the experiment
     logging : bool
@@ -131,6 +133,7 @@ class Context:
         """Creates an empty scheduling context."""
         self.tasks = OrderedDict()
         self.resources = OrderedDict()
+        self.num_migrations = 0
         self.experiment_info = ExperimentInformation()
         self.logging = False
         self.logger = None
@@ -496,6 +499,7 @@ class Context:
             self.resources[current_resource].load -= task.load
             self.resources[new_resource].load += task.load
             task.mapping = new_resource
+            self.num_migrations += 1
             # Only logs migrations to different resources
             if self.logging is True:
                 self.logger.register_migration(task_id, task.load,

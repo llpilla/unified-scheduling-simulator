@@ -89,6 +89,7 @@ class ContextTest(unittest.TestCase):
         self.assertEqual(self.context.resources[0].load, 4)
         self.assertEqual(len(self.context.round_tasks), 0)
         self.assertEqual(len(self.context.round_resources), 0)
+        self.assertEqual(self.context.num_migrations, 0)
 
         info = self.context.experiment_info
         self.assertEqual(info.num_tasks, 5)
