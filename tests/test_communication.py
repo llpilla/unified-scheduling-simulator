@@ -148,6 +148,26 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(len(vertex.volume), 3)
         self.assertEqual(vertex.volume[0], 1)
 
+    def test_check_consistency(self):
+        self.assertTrue(self.directed_graph.check_consistency())
+        self.assertTrue(self.undirected_graph.check_consistency())
+
+        graph = self.directed_graph
+        graph.add_communication(2, 0, -1, 1)
+        self.assertFalse(graph.check_consistency())
+        graph.remove_communication(2, 0)
+        self.assertTrue(graph.check_consistency())
+
+        graph.add_communication(2, 0, 1, 0)
+        self.assertFalse(graph.check_consistency())
+        graph.remove_communication(2, 0)
+        self.assertTrue(graph.check_consistency())
+
+        graph.add_communication(2, 10, 5, 5)
+        self.assertFalse(graph.check_consistency())
+        graph.remove_communication(2, 10)
+        self.assertTrue(graph.check_consistency())
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -11,6 +11,7 @@ from collections import OrderedDict
 from simulator.tasks import Task, TaskBundle
 from simulator.resources import Resource
 from simulator.logger import Logger
+from simulator.communication import Graph
 
 
 class ExperimentInformation:
@@ -521,6 +522,164 @@ class Context:
         # Migrates all tasks in the bundle
         for task_id in bundle.task_ids:
             self.update_mapping(task_id, new_resource)
+
+
+class CommunicationContext(Context):
+    """
+    Scheduling context for communication-aware schedulers. Extends Context.
+
+    Attributes
+    ----------
+    tasks : OrderedDict of Task objects
+        List of all tasks
+    resources : OrderedDict of Resource objects
+        List of all resources
+    num_migrations : int
+        Number of tasks migrated in the context
+    experiment_info : ExperimentInformation object
+        Basic information about the experiment
+    logging : bool
+        True if logging the scheduler execution
+    logger : Logger object
+        Stores the log of execution
+    round_tasks
+        List of tasks for the round
+    round_resources
+        List of resources for the round
+    graph : Graph
+        Representation of the communication graph
+    """
+
+    def __init__(self):
+        """Creates an empty communication-aware scheduling context."""
+        Context.__init__(self)
+        self.graph = 0
+
+    @staticmethod
+    def from_context(context):
+        """
+        Creates a communication-aware scheduling context from a basic context.
+
+        Parameters
+        ----------
+        context : Context object
+            Basic scheduling context
+
+        Returns
+        -------
+        CommunicationContext object
+        """
+        comm_context = CommunicationContext()
+
+        comm_context.tasks = context.tasks
+        comm_context.resources = context.resources
+        comm_context.experiment_info = context.experiment_info
+        comm_context.logging = context.logging
+        comm_context.logger = context.logger
+
+        return comm_context
+
+    @staticmethod
+    def from_csv(filename="scenario.csv"):
+        """
+        Imports a scheduling context from a CSV file.
+
+        Parameters
+        ----------
+        filename : string
+            Name of the CSV file containing the scheduling context.
+
+        Returns
+        -------
+        CommunicationContext object
+            Scheduling context read from CSV file or empty context.
+
+        Raises
+        ------
+        IOError
+            If the file cannot be found or open.
+        KeyError
+            If the file does not contain the correct keywords (e.g., 'tasks'),
+            or tasks have inconsistent identifiers or negative loads.
+
+        Notes
+        -----
+        Each line of the file contains a task identifier, its load, and its
+        mapping.
+        A header informs the number of tasks, resources, and other information.
+        """
+        base_context = Context.from_csv(filename)
+        comm_context = CommunicationContext.from_context(base_context)
+        return comm_context
+
+    def extend_with_communication(self, filename="comm.csv", directed=True):
+        """
+        Reads the communication graph from a CSV file.
+
+        Parameters
+        ----------
+        filename : string
+            Name of the CSV file containing the communication graph.
+        directed : boolean (default: True)
+            True if the communication graph is a directed graph.
+
+        Raises
+        ------
+        IOError
+            If the file cannot be found or open.
+        KeyError
+            If the file does not contain the correct keywords (e.g., 'tasks'),
+            or tasks have inconsistent identifiers or negative edges.
+        ValueError
+            If the number of tasks in the file does not match the
+            number of tasks in the context.
+
+        Notes
+        -----
+        Each line of the file contains two task identifiers, the number of
+        messages, and the number of bytes sent from the first to the second.
+        A header informs the number of tasks, resources, and other information.
+        """
+        # Initiates the graph
+        graph = Graph(self.num_tasks(), directed)
+        try:
+            with open(filename, 'r') as csvfile:
+                # Example of the format of the first line to read
+                # "# tasks:5 resources:3 rng_seed:0 algorithm:none"
+                first_line = csvfile.readline()
+                # We decompose the line into a dict while ignoring extremities
+                first_info = dict(x.split(':')
+                                  for x in first_line[2:-1].split(' '))
+                # and we save each useful component
+                num_tasks = int(first_info['tasks'])
+                if (num_tasks != self.num_tasks()):
+                    raise ValueError
+
+                # After that, we read the other lines of the CSV file
+                reader = csv.DictReader(csvfile)
+                for line in reader:
+                    # And add the information to the communication graph
+                    graph.add_communication(int(line['source']),
+                                            int(line['dest']),
+                                            int(line['bytes']),
+                                            int(line['msgs'])
+                                            )
+
+        except IOError:
+            print('Error: could not read file '+filename+'.')
+        except KeyError:
+            print('Error: file '+filename+' contains non-standard' +
+                  ' formating or incorrect keys.')
+        except ValueError:
+            print('Error: the number of tasks in '+filename+'does not' +
+                  ' match the number of tasks in the context')
+
+        # Finally, we check if communication graph for any
+        # inconsistencies. If any are found, we generate an empty graph.
+        if graph.check_consistency() is False:
+            graph = Graph(self.num_tasks(), directed)
+
+        self.graph = graph
 
 
 class DistributedContext(Context):

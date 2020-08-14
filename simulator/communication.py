@@ -186,3 +186,34 @@ class Graph:
             Task from the communication graph
         """
         return self.vertices[task_id]
+
+    def check_consistency(self):
+        """
+        Verifies that the communication graph is consistent.
+
+        Returns
+        -------
+        bool
+            True if the graph is consistent
+
+        Notes
+        -----
+        A consistent communication graph only has edges to
+        existing tasks, and the values for bytes and volume are
+        positive.
+        """
+        num_tasks = len(self.vertices)
+
+        for vertex in self.vertices:
+            volume = vertex.volume
+            msgs = vertex.msgs
+            # First check: neighbors are valid tasks
+            if not(all(task_id < num_tasks for task_id in volume.keys()) and
+                   all(task_id >= 0 for task_id in volume.keys())):
+                return False
+            # Second check: numbers of bytes and messages are positive
+            if not(all(vol > 0 for vol in volume.values()) and
+                   all(msg > 0 for msg in msgs.values())):
+                return False
+        # If no inconsistencies were found, we are good
+        return True
