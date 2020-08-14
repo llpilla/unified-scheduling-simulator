@@ -650,6 +650,131 @@ class GreedyRefine(Scheduler):
             context.update_mapping(task_id, migrated_tasks[task_id].mapping)
 
 
+class GreedyComm(Scheduler):
+    """
+    Largest Processing Time-based scheduling algorithm that also considers
+    communication. Inherits from Scheduler class
+
+    Notes
+    -----
+    The GreedyComm policy takes tasks in decreasing load order and maps them
+    to the least loaded resources or a resource that has a communicating task.
+    Requires a CommunicationContext with an undirected graph.
+    """
+
+    def __init__(self,
+                 msg_weight=0.001,
+                 vol_weight=0.001,
+                 screen_verbosity=1,
+                 logging_verbosity=1,
+                 file_prefix='experiment'):
+        """Creates a GreedyComm scheduler with its verbosity"""
+        Scheduler.__init__(self, name='GreedyComm',
+                           screen_verbosity=screen_verbosity,
+                           logging_verbosity=logging_verbosity,
+                           file_prefix=file_prefix)
+        self.msg_weight = msg_weight
+        self.vol_weight = vol_weight
+
+    def run_policy(self, context):
+        """
+        Schedules tasks following a list scheduling policy.
+
+        Parameters
+        ----------
+        context : Context object
+            CommunicationContext to schedule
+        """
+        # Creates a list of resources with zero load
+        num_resources = context.num_resources()
+        res_load = [0 for i in range(num_resources)]
+        # Creates a max heap of tasks
+        num_tasks = context.num_tasks()
+        task_heap = HeapFactory.create_loaded_heap(context.tasks, 'max')
+        # Creates a list saying which tasks have been scheduled
+        scheduled = [False for i in range(num_tasks)]
+
+        # Iterates over tasks
+        # Maps the most loaded task to the least loaded resource
+        # or one that has communicating tasks
+        for i in range(num_tasks):
+            task_load, task_id = task_heap.pop()
+            # gets a least loaded resource
+            candidate_id = res_load.index(min(res_load))
+            candidate_load = res_load[candidate_id]
+            # gets the communication costs related to this task
+            comm_costs = self.communication_cost(task_id, context.tasks,
+                                                 context.graph, scheduled)
+            total_comm_cost = sum(comm_costs.values())
+            if candidate_id not in comm_costs:
+                comm_costs[candidate_id] = 0
+            # registers the best mapping so far
+            best_id = candidate_id
+            best_load = candidate_load + total_comm_cost - comm_costs[best_id]
+
+            # iterates over the involved resources to see if a better
+            # mapping comes from them
+            for candidate_id in comm_costs:
+                candidate_load = res_load[candidate_id] + \
+                                 total_comm_cost - comm_costs[candidate_id]
+                # if this candidate has a better estimated load, it's the best
+                if candidate_load < best_load:
+                    best_id = candidate_id
+                    best_load = candidate_load
+
+            # Maps the task to the best resource found
+            context.update_mapping(task_id, best_id)
+            scheduled[task_id] = True
+            # Updates local data structures to reflect the new loads
+            # 1. the load of the new task
+            res_load[best_id] += task_load
+            # 2. the communication cost from the tasks in other resources
+            res_load[best_id] += total_comm_cost - comm_costs[best_id]
+            # 3. the communication cost in other resources
+            for resource_id in comm_costs:
+                if resource_id != best_id:
+                    res_load[resource_id] += comm_costs[resource_id]
+
+    def communication_cost(self, task_id, tasks, graph, scheduled):
+        """
+        Computes the communication cost of a task related to a subset of
+        resources.
+
+        Parameters
+        ----------
+        task_id : int
+            Task identifier
+        tasks : OrderedDict of Task
+            Tasks in the context
+        graph : Graph
+            Communication graph
+        scheduler : list of bool
+            Information if the tasks have been mapped already
+
+        Returns
+        -------
+        dict of int keys and float values
+            Communication costs for different resources
+        """
+        comm_costs = {}
+        # Iterates over neighbors
+        neighbors = graph.get_vertex(task_id).volume.keys()
+        for neigh_id in neighbors:
+            # if the neighbor has been mapped somewhere else
+            # accumulates its communication
+            if scheduled[neigh_id] is True:
+                vol, msgs = graph.get_communication(task_id, neigh_id)
+                resource_id = tasks[neigh_id].mapping
+                cost = vol*self.vol_weight + msgs*self.msg_weight
+                # Adds the communication cost to the dictionary
+                if resource_id in comm_costs:
+                    comm_costs[resource_id] += cost
+                else:
+                    comm_costs[resource_id] = cost
+        # Returns the dictionary of communication costs
+        return comm_costs
+
+
 class Refine(Scheduler):
     """
     Refinement-based scheduling algorithm. Inherits from Scheduler class

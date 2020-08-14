@@ -7,10 +7,11 @@ import os
 # code from our simulator
 sys.path.append('../')
 
-from simulator.context import Context  # noqa
-from simulator.context import DistributedContext  # noqa
 import simulator.scheduler as sc  # noqa
-from simulator.heap import HeapFactory #noqa
+from simulator.context import Context  # noqa
+from simulator.context import CommunicationContext  # noqa
+from simulator.context import DistributedContext  # noqa
+from simulator.heap import HeapFactory  # noqa
 
 
 class SchedulerTest(unittest.TestCase):
@@ -304,6 +305,57 @@ class GreedyRefineTest(unittest.TestCase):
         self.assertEqual(resources[0].load, 5.0)
         self.assertEqual(resources[1].load, 5.0)
         self.assertEqual(resources[2].load, 5.0)
+
+
+class GreedyCommTest(unittest.TestCase):
+    def test_scheduler(self):
+        scheduler = sc.GreedyComm(0, 0, 0, 0)
+        self.assertEqual(scheduler.experiment_info.algorithm,
+                         'GreedyComm')
+        self.assertEqual(scheduler.msg_weight, 0)
+        self.assertEqual(scheduler.vol_weight, 0)
+        context = CommunicationContext.from_csv(
+                  'test_inputs/01234_input.csv')
+        context.extend_with_communication(
+                'test_inputs/comm_01234_input.csv', False)
+
+        scheduler.schedule(context)
+
+        tasks = context.tasks
+        self.assertEqual(tasks[0].mapping, 1)
+        self.assertEqual(tasks[1].mapping, 0)
+        self.assertEqual(tasks[2].mapping, 1)
+        self.assertEqual(tasks[3].mapping, 2)
+        self.assertEqual(tasks[4].mapping, 2)
+
+        resources = context.resources
+        self.assertEqual(resources[0].load, 5.0)
+        self.assertEqual(resources[1].load, 5.0)
+        self.assertEqual(resources[2].load, 5.0)
+
+    def test_scheduler_with_weights(self):
+        scheduler = sc.GreedyComm(screen_verbosity=0,
+                                  logging_verbosity=0)
+        self.assertEqual(scheduler.msg_weight, 0.001)
+        self.assertEqual(scheduler.vol_weight, 0.001)
+        context = CommunicationContext.from_csv(
+                  'test_inputs/01234_input.csv')
+        context.extend_with_communication(
+                'test_inputs/comm_01234_input.csv', False)
+
+        scheduler.schedule(context)
+
+        tasks = context.tasks
+        self.assertEqual(tasks[0].mapping, 2)
+        self.assertEqual(tasks[1].mapping, 0)
+        self.assertEqual(tasks[2].mapping, 1)
+        self.assertEqual(tasks[3].mapping, 2)
+        self.assertEqual(tasks[4].mapping, 2)
+
+        resources = context.resources
+        self.assertEqual(resources[0].load, 5.0)
+        self.assertEqual(resources[1].load, 4.0)
+        self.assertEqual(resources[2].load, 6.0)
 
 
 class RefineTest(unittest.TestCase):
