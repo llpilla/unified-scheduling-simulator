@@ -1,0 +1,10 @@
+# tasks:5 resources:3 rng_seed:0 algorithm:none
+source,dest,msgs,bytes
+0,1,1,200
+0,2,2,400
+0,3,4,800
+0,4,8,2000
+1,0,10,20
+2,0,10,20
+3,0,1,100
+1,2,1,300

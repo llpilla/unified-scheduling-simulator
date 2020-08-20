@@ -13,6 +13,7 @@ sys.path.append('../')
 from simulator.context import ExperimentInformation   # noqa
 from simulator.context import ExperimentStatus   # noqa
 from simulator.context import Context  # noqa
+from simulator.context import CommunicationContext  # noqa
 from simulator.context import DistributedContext  # noqa
 from simulator.tasks import Task, TaskBundle, LoadGenerator  # noqa
 from simulator.resources import Resource  # noqa
@@ -89,6 +90,7 @@ class ContextTest(unittest.TestCase):
         self.assertEqual(self.context.resources[0].load, 4)
         self.assertEqual(len(self.context.round_tasks), 0)
         self.assertEqual(len(self.context.round_resources), 0)
+        self.assertEqual(self.context.num_migrations, 0)
 
         info = self.context.experiment_info
         self.assertEqual(info.num_tasks, 5)
@@ -214,6 +216,55 @@ class ContextTest(unittest.TestCase):
         diff = filecmp.cmp('scenario.csv', 'test_inputs/from_loads.csv')
         self.assertTrue(diff)
         os.remove('scenario.csv')
+
+
+class CommunicationContextTest(unittest.TestCase):
+    def setUp(self):
+        self.context = CommunicationContext.from_csv(
+            'test_inputs/01234_input.csv')
+        self.context.extend_with_communication(
+            'test_inputs/comm_01234_input.csv')
+
+    def test_attributes(self):
+        self.assertEqual(len(self.context.tasks), 5)
+        self.assertEqual(self.context.tasks[0].load, 1)
+        self.assertEqual(len(self.context.resources), 3)
+        self.assertEqual(self.context.resources[0].load, 4)
+        self.assertEqual(len(self.context.round_tasks), 0)
+        self.assertEqual(len(self.context.round_resources), 0)
+        self.assertEqual(self.context.num_migrations, 0)
+
+        info = self.context.experiment_info
+        self.assertEqual(info.num_tasks, 5)
+        self.assertEqual(info.num_resources, 3)
+        self.assertEqual(info.algorithm, 'none')
+        self.assertEqual(info.rng_seed, 0)
+        self.assertEqual(info.bundle_load_limit, 10)
+        self.assertEqual(info.epsilon, 1.05)
+
+        self.assertFalse(self.context.logging)
+        self.assertEqual(self.context.logger, None)
+
+        graph = self.context.graph
+        self.assertEqual(len(graph.vertices), 5)
+        self.assertTrue(graph.directed)
+        vertices = graph.vertices
+        self.assertEqual(vertices[0].volume[1], 200)
+        self.assertEqual(vertices[0].msgs[1], 1)
+        self.assertEqual(vertices[0].volume[2], 400)
+        self.assertEqual(vertices[0].msgs[2], 2)
+        self.assertEqual(vertices[0].volume[3], 800)
+        self.assertEqual(vertices[0].msgs[3], 4)
+        self.assertEqual(vertices[0].volume[4], 2000)
+        self.assertEqual(vertices[0].msgs[4], 8)
+        self.assertEqual(vertices[1].volume[0], 20)
+        self.assertEqual(vertices[1].msgs[0], 10)
+        self.assertEqual(vertices[2].volume[0], 20)
+        self.assertEqual(vertices[2].msgs[0], 10)
+        self.assertEqual(vertices[3].volume[0], 100)
+        self.assertEqual(vertices[3].msgs[0], 1)
+        self.assertEqual(vertices[1].volume[2], 300)
+        self.assertEqual(vertices[1].msgs[2], 1)
 
 
 class DistributedContextTest(unittest.TestCase):
